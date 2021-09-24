@@ -114,6 +114,7 @@ void FastxSample(
     }
 
     // subsample
+    fraction *= 1.05;
 
     gzFile fp1 = gzopen(ifilename1.c_str(), "r");
     gzFile fp2 = gzopen(ifilename2.c_str(), "r");
@@ -363,14 +364,12 @@ int FastxSampleMain(int argc, char **argv)
         fraction = static_cast<double>(bases) / total_bases;
     }
 
+    summary.expected_subsample_fraction = fraction;
+
     if (bases < 0)
     {
         bases = fraction * total_bases;
     }
-
-    fraction *= 1.05;
-
-    summary.expected_subsample_fraction = fraction;
 
     std::ostringstream pigz_command;
     pigz_command << pigz << " -" << compress_level << " -p" << num_threads;
