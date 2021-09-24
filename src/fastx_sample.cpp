@@ -114,7 +114,7 @@ void FastxSample(
     }
 
     // subsample
-    
+
     // scale fraction to 'avoid' subsample less bases than expected, 
     // side effect is that reads in the front of the files are more likely to be 
     // sampled than reads in the tail of the files
@@ -158,6 +158,10 @@ void FastxSample(
             std::string seq_str2 = kseqToStr(read2);
             fprintf(stream1, "%s\n", seq_str1.c_str());
             fprintf(stream2, "%s\n", seq_str2.c_str());
+        }
+        if (subsample_bases >= bases)
+        {
+            break;
         }
     }
 
