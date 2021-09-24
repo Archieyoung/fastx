@@ -147,7 +147,7 @@ void FastxSample(
         total_bases += read2->seq.l;
         // weight p by read length
         double p = random_u(g) * (read1->seq.l + read2->seq.l) / mean_length;
-        if (p <= fraction && subsample_bases <= bases) {
+        if (p <= fraction && subsample_bases < bases) {
             subsample_bases += read1->seq.l;
             subsample_bases += read2->seq.l;
             std::string seq_str1 = kseqToStr(read1);
