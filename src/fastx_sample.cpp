@@ -204,10 +204,7 @@ void FastxSample(
         std::exit(1);
     }
 
-    summary.total_bases = total_bases;
     summary.real_subsample_bases = subsample_bases;
-    summary.real_subsample_fraction =
-        static_cast<double>(subsample_bases) / total_bases;
 }
 
 
@@ -364,6 +361,8 @@ int FastxSampleMain(int argc, char **argv)
     int64_t total_reads, total_bases;
     FastxCountPair(input1, input2, total_reads, total_bases);
 
+    summary.total_bases = total_bases;
+
     // mean length of read1 + read2
     double mean_length = static_cast<double>(total_bases) / total_reads * 2.0;
 
@@ -392,6 +391,9 @@ int FastxSampleMain(int argc, char **argv)
             static_cast<int>(std::round(
                 summary.expected_subsample_fraction * summary.total_bases));
     }
+
+    summary.real_subsample_fraction =
+        static_cast<double>(summary.real_subsample_bases) / summary.total_bases;
     
     std::cerr << "#Subsample Summary" << std::endl;
     std::cerr << "Total bases: "
