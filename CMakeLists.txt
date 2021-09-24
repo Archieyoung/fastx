@@ -54,12 +54,3 @@ target_include_directories(fastx PUBLIC
 target_link_libraries(fastx
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/htslib/libhts.a
     z m bz2 lzma pthread curl ${Boost_LIBRARIES})
-
-add_executable(test
-    src/test_bp.cpp)
-
-target_include_directories(test PUBLIC
-    $<BUILD_INTERFACE:${Boost_INCLUDE_DIRS})
-
-target_link_libraries(test
-    z ${Boost_LIBRARIES})
