@@ -100,8 +100,8 @@ struct SubsampleSummary {
 void FastxSample(
     const std::string &ifilename1, const std::string &ifilename2,
     const std::string &ofilename1, const std::string &ofilename2,
-    double fraction, double mean_length, int seed, const std::string &pigz,
-    SubsampleSummary &summary)
+    double fraction, int64_t bases, double mean_length, int seed,
+    const std::string &pigz, SubsampleSummary &summary)
 {
     if (fraction >= 1.0)
     {
@@ -146,7 +146,7 @@ void FastxSample(
         total_bases += read2->seq.l;
         // weight p by read length
         double p = random_u(g) * (read1->seq.l + read2->seq.l) / mean_length;
-        if (p <= fraction) {
+        if (p <= fraction && total_bases < bases) {
             subsample_bases += read1->seq.l;
             subsample_bases += read2->seq.l;
             std::string seq_str1 = kseqToStr(read1);
@@ -363,13 +363,20 @@ int FastxSampleMain(int argc, char **argv)
         fraction = static_cast<double>(bases) / total_bases;
     }
 
+    if (bases < 0)
+    {
+        bases = fraction * total_bases;
+    }
+
+    fraction *= 1.05;
+
     summary.expected_subsample_fraction = fraction;
 
     std::ostringstream pigz_command;
     pigz_command << pigz << " -" << compress_level << " -p" << num_threads;
 
     FastxSample(input1, input2, output1, output2,
-        fraction, mean_length, seed, pigz_command.str(), summary);
+        fraction, bases, mean_length, seed, pigz_command.str(), summary);
 
     if (bases > 0) {
         summary.expected_subsample_bases = bases;
