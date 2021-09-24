@@ -114,6 +114,10 @@ void FastxSample(
     }
 
     // subsample
+    
+    // scale fraction to 'avoid' subsample less bases than expected, 
+    // side effect is that reads in the front of the files are more likely to be 
+    // sampled than reads in the tail of the files
     fraction *= 1.05;
 
     gzFile fp1 = gzopen(ifilename1.c_str(), "r");
