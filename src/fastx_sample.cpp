@@ -375,7 +375,7 @@ int FastxSampleMain(int argc, char **argv)
 
     if (bases < 0)
     {
-        bases = fraction * total_bases;
+        bases = static_cast<int64_t>(std::round(fraction * total_bases));
     }
 
     std::ostringstream pigz_command;
@@ -384,13 +384,7 @@ int FastxSampleMain(int argc, char **argv)
     FastxSample(input1, input2, output1, output2,
         fraction, bases, mean_length, seed, pigz_command.str(), summary);
 
-    if (bases > 0) {
-        summary.expected_subsample_bases = bases;
-    } else {
-        summary.expected_subsample_bases =
-            static_cast<int>(std::round(
-                summary.expected_subsample_fraction * summary.total_bases));
-    }
+    summary.expected_subsample_bases = bases;
 
     summary.real_subsample_fraction =
         static_cast<double>(summary.real_subsample_bases) / summary.total_bases;
