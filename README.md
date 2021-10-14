@@ -1,4 +1,4 @@
-# Faxtx - An ultrafast toolkit manipulation Fasta/q file.
+# Fastx - An ultrafast toolkit manipulation Fasta/q file.
 
 ## 作者
 
