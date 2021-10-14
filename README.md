@@ -1,4 +1,4 @@
-# Fastx - An ultrafast toolkit manipulation Fasta/q file.
+# Fastx - An ultrafast toolkit for manipulating Fasta/q file.
 
 ## 作者
 
