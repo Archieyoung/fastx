@@ -356,6 +356,13 @@ int FastxSampleMain(int argc, char **argv)
         std::exit(1);
     }
 
+    if (bases > 0 && fraction > 0)
+    {
+        std::cerr << "Error! -b(--bases) and -f(--fraction) can not be "
+            "used together!" << std::endl;
+        std::exit(1);
+    }
+
     SubsampleSummary summary;
 
     int64_t total_reads, total_bases;
