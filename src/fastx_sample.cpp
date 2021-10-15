@@ -243,18 +243,21 @@ int64_t BasesStrToInt(const std::string &bases_str) {
     switch (bases_str.back()) {
         case 'G':
         case 'g':
-            bases = 1000000000 * boost::lexical_cast<int64_t>(
-                bases_str.substr(0, bases_str.size() - 1));
+            bases = static_cast<int64_t>(std::round(1000000000 *
+                boost::lexical_cast<double>(
+                bases_str.substr(0, bases_str.size() - 1))));
             break;
         case 'M':
         case 'm':
-            bases = 1000000 * boost::lexical_cast<int64_t>(
-                bases_str.substr(0, bases_str.size() - 1));
+            bases = static_cast<int64_t>(std::round(1000000 *
+                boost::lexical_cast<double>(
+                bases_str.substr(0, bases_str.size() - 1))));
             break;
         case 'K':
         case 'k':
-            bases = 1000 * boost::lexical_cast<int64_t>(
-                bases_str.substr(0, bases_str.size() - 1));
+            bases = static_cast<int64_t>(std::round(1000 *
+                boost::lexical_cast<double>(
+                bases_str.substr(0, bases_str.size() - 1))));
             break;
         default:
             bases = boost::lexical_cast<int64_t>(
