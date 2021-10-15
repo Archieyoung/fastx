@@ -109,6 +109,7 @@ void FastxSample(
             boost::filesystem::copy_option::overwrite_if_exists);
         boost::filesystem::copy_file(ifilename2, ofilename2,
             boost::filesystem::copy_option::overwrite_if_exists);
+        summary.real_subsample_bases = summary.total_bases;
         summary.real_subsample_fraction = 1.0;
         return;
     }
