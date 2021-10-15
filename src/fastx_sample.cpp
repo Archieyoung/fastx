@@ -29,6 +29,12 @@ void FastxCount(const std::string &filename, int64_t &reads, int64_t &bases)
     bases = 0;
     gzFile fp = gzopen(filename.c_str(), "r");
 
+    if (fp == nullptr)
+    {
+        std::perror(("Error! Can not open " + filename).c_str());
+        std::exit(1);
+    }
+
     kseq_t *read = kseq_init(fp);
 
     int ret;
