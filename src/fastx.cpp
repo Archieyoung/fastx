@@ -32,7 +32,7 @@ int main(int argc, char **argv)
         {"sample", true}
         };
     
-    if (registered_commands.find(argv[1]) == registered_commands.end())
+    if (registered_commands.find(argv[1]) != registered_commands.end())
     {
         if(!registered_commands.at(argv[1])) {
             std::cerr << "Error! " << argv[1] << " is deprecated!" << std::endl;
