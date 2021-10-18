@@ -9,10 +9,14 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
+set(CMAKE_BUILD_TYPE "Release")
+
 # CXX configure
 if (CMAKE_BUILD_TYPE STREQUAL Debug)
+    message(STATUS "[STATUS]: Build Release")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -Wall -Wextra -pedantic -fprofile-arcs -ftest-coverage")
 elseif (CMAKE_BUILD_TYPE STREQUAL Release)
+    message(STATUS "[STATUS]: Build Release")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -Wall -Wextra -pedantic")
 endif ()
 
