@@ -6,6 +6,7 @@
 
 #include "version.hpp"
 #include "fastx_sample.hpp"
+#include "fastx_head.hpp"
 
 
 static
@@ -17,6 +18,7 @@ void Usage() {
     std::cerr << "Usage: fastx <command> <arguments>\n" << std::endl;
     std::cerr
             << "Commands:\n"
+            << "  head                        head sequences.\n"
             << "  sample                      subsample sequences.\n"
             << std::endl;
 }
@@ -29,7 +31,8 @@ int main(int argc, char **argv)
     }
 
     std::map<std::string, bool> registered_commands = {
-        {"sample", true}
+        {"head", true},
+        {"sample", true},
         };
     
     if (registered_commands.find(argv[1]) != registered_commands.end())
@@ -43,7 +46,9 @@ int main(int argc, char **argv)
         std::exit(1);
     }
 
-    if ( strcmp(argv[1], "sample") == 0 )
+    if ( strcmp(argv[1], "head") == 0 ) {
+        FastxHeadMain(argc - 1, argv + 1);
+    } else if ( strcmp(argv[1], "sample") == 0 )
     {
         FastxSampleMain(argc - 1, argv + 1);
     }

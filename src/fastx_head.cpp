@@ -22,39 +22,12 @@
 #include "version.hpp"
 
 
-struct SubsampleSummary {
-    int64_t total_bases;
-    int64_t expected_subsample_bases;
-    int64_t real_subsample_bases;
-    double expected_subsample_fraction;
-    double real_subsample_fraction;
-};
 
-
-void FastxSample(
+void FastxHeadBases(
     const std::string &ifilename1, const std::string &ifilename2,
     const std::string &ofilename1, const std::string &ofilename2,
-    double fraction, int64_t bases, double mean_length, int seed,
-    const std::string &pigz, SubsampleSummary &summary)
+    int64_t bases, const std::string &pigz)
 {
-    if (fraction >= 1.0)
-    {
-        boost::filesystem::copy_file(ifilename1, ofilename1,
-            boost::filesystem::copy_option::overwrite_if_exists);
-        boost::filesystem::copy_file(ifilename2, ofilename2,
-            boost::filesystem::copy_option::overwrite_if_exists);
-        summary.real_subsample_bases = summary.total_bases;
-        summary.real_subsample_fraction = 1.0;
-        return;
-    }
-
-    // subsample
-
-    // scale fraction to 'avoid' subsample less bases than expected, 
-    // side effect is that reads in the front of the files are more likely to be 
-    // sampled than reads in the tail of the files
-    fraction *= 1.05;
-
     gzFile fp1 = gzopen(ifilename1.c_str(), "r");
     gzFile fp2 = gzopen(ifilename2.c_str(), "r");
 
@@ -73,11 +46,6 @@ void FastxSample(
     kseq_t *read1 = kseq_init(fp1);
     kseq_t *read2 = kseq_init(fp2);
 
-    std::random_device rd;
-    std::mt19937 g(rd());
-    g.seed(seed);
-    std::uniform_real_distribution<double> random_u(0.0, 1.0);
-
     std::ostringstream pigz_command1;
     std::ostringstream pigz_command2;
     pigz_command1 << pigz << " - 1> " << ofilename1;
@@ -86,29 +54,19 @@ void FastxSample(
     FILE *stream1 = popen(pigz_command1.str().c_str(), "w");
     FILE *stream2 = popen(pigz_command2.str().c_str(), "w");
 
-
-    int64_t total_bases = 0;
-    int64_t subsample_bases = 0;
+    int64_t base_count = 0;
 
     int ret1, ret2;
     while ((ret1 = kseq_read(read1) >= 0) &&
         (ret2 = kseq_read(read2) >= 0))
     {
-        total_bases += read1->seq.l;
-        total_bases += read2->seq.l;
-        // weight p by read length
-        double p = random_u(g) * (read1->seq.l + read2->seq.l) / mean_length;
-        if (p <= fraction && subsample_bases < bases) {
-            subsample_bases += read1->seq.l;
-            subsample_bases += read2->seq.l;
+        base_count += read1->seq.l;
+        base_count += read2->seq.l;
+        if (base_count <= bases) {
             std::string seq_str1 = kseqToStr(read1);
             std::string seq_str2 = kseqToStr(read2);
             fprintf(stream1, "%s\n", seq_str1.c_str());
             fprintf(stream2, "%s\n", seq_str2.c_str());
-        }
-        if (subsample_bases >= bases)
-        {
-            break;
         }
     }
 
@@ -150,8 +108,61 @@ void FastxSample(
             << "Error code: " << ret2 << std::endl;
         std::exit(1);
     }
+}
 
-    summary.real_subsample_bases = subsample_bases;
+
+void FastxHeadReads(
+    const std::string &ifilename, const std::string &ofilename,
+    int64_t reads, const std::string &pigz)
+{
+    gzFile fp = gzopen(ifilename.c_str(), "r");
+
+    if (fp == nullptr)
+    {
+        std::perror(("Error! Can not open " + ifilename).c_str());
+        std::exit(1);
+    }
+
+    kseq_t *read = kseq_init(fp);
+
+    std::ostringstream pigz_command;
+    pigz_command << pigz << " - 1> " << ofilename;
+
+    FILE *stream = popen(pigz_command.str().c_str(), "w");
+
+    int64_t read_count = 0;
+
+    int ret;
+    while ((ret = kseq_read(read)) >= 0)
+    {
+        ++read_count;
+        if (read_count <= reads) {
+            std::string seq_str = kseqToStr(read);
+            fprintf(stream, "%s\n", seq_str.c_str());
+        }
+    }
+
+    if (ret < -1)
+    {
+        std::cerr << "Error! Input fastq truncated! File was "
+            << ifilename << " Last read name was "
+            << read->name.s  << std::endl;
+        std::exit(1);
+    }
+
+    kseq_destroy(read);
+    gzclose(fp);
+
+    fflush(stream);
+
+    ret = pclose(stream);
+
+    if (ret != 0)
+    {
+        std::cerr << "Error! Can not run pigz compression! "
+            << "Error code: " << ret << std::endl;
+        std::exit(1);
+    }
 }
 
 
@@ -167,11 +178,10 @@ void Usage() {
             << "  -I, --in2, FILE             input fasta/fastq file name for read2.\n"
             << "  -o, --out1, FILE            output fasta/fastq file name for read1.\n"
             << "  -O, --out2, FILE            output fasta/fastq file name for read2.\n"
-            << "  -b, --bases, STR            expected bases to subsample(K/M/G).\n"
-            << "  -f, --fraction, FLOAT       expected fraction of bases to subsample.\n"
+            << "  -b, --bases, STR            get this value of bases(K/M/G).\n"
+            << "  -n, --number, STR           get this value of reads(K/M/G).\n"
             << "  -p, --pigz, STR             path to pigz program.[pigz]\n"
             << "  -l, --level, INT            compression level(0 to 9, or 11).[6]\n"
-            << "  -s, --seed, INT             random seed.[11]\n"
             << "  -t, --thread, INT           number of threads for running pigz.[4]\n"
             << "  -h, --help                  print this message and exit.\n"
             << "  -V, --version               print version."
@@ -179,7 +189,7 @@ void Usage() {
 }
 
 
-int FastxSampleMain(int argc, char **argv)
+int FastxHeadMain(int argc, char **argv)
 {
     if (argc == 1)
     {
@@ -193,6 +203,7 @@ int FastxSampleMain(int argc, char **argv)
             {"out1", required_argument, 0, 'o'},
             {"out2", required_argument, 0, 'O'},
             {"bases", required_argument, 0, 'b'},
+            {"number", required_argument, 0, 'n'},
             {"fraction", required_argument, 0, 'f'},
             {"level", required_argument, 0, 'l'},
             {"pigz", required_argument, 0, 'p'},
@@ -203,17 +214,16 @@ int FastxSampleMain(int argc, char **argv)
     };
 
     int c, long_idx;
-    const char *opt_str = "i:I:o:O:b:f:p:l:s:t:hV";
+    const char *opt_str = "i:I:o:O:b:n:p:l:t:hV";
 
     std::string input1;
     std::string input2;
     std::string output1;
     std::string output2;
     int64_t bases = -1;
-    double fraction = -1.0;
+    int64_t reads = -1;
     std::string pigz = "pigz";
     int compress_level = 6;
-    int seed = 11;
     int num_threads = 4;
 
     while ((c = getopt_long(
@@ -241,11 +251,11 @@ int FastxSampleMain(int argc, char **argv)
                     std::exit(1);
                 }
                 break;
-            case 'f':
-                fraction = boost::lexical_cast<double>(optarg);
-                if (fraction <= 0)
+            case 'n':
+                reads = BasesStrToInt(optarg);
+                if (reads <= 0)
                 {
-                    std::cerr << "Error! input fraction must be positive!"
+                    std::cerr << "Error! input reads must be positive!"
                         << std::endl;
                     std::exit(1);
                 }
@@ -255,9 +265,6 @@ int FastxSampleMain(int argc, char **argv)
                 break;
             case 'l':
                 compress_level = boost::lexical_cast<int>(optarg);
-                break;
-            case 's':
-                seed = boost::lexical_cast<int>(optarg);
                 break;
             case 't':
                 num_threads = boost::lexical_cast<int>(optarg);
@@ -274,64 +281,33 @@ int FastxSampleMain(int argc, char **argv)
         }
     }
 
-    if (bases < 0 && fraction < 0)
+    if (bases < 0 && reads < 0)
     {
-        std::cerr << "Error! must input expected bases(-b, --bases) "
-            << "or expected fraction(-f, --fraction)." << std::endl;
+        std::cerr << "Error! must input bases(-b, --bases) "
+            << "or number(-n, --number)." << std::endl;
         std::exit(1);
     }
 
-    if (bases > 0 && fraction > 0)
+    if (bases > 0 && reads > 0)
     {
-        std::cerr << "Error! -b(--bases) and -f(--fraction) can not be "
+        std::cerr << "Error! -b(--bases) and -n(--number) can not be "
             "used together!" << std::endl;
         std::exit(1);
-    }
-
-    SubsampleSummary summary;
-
-    int64_t total_reads, total_bases;
-    FastxCountPair(input1, input2, total_reads, total_bases);
-
-    summary.total_bases = total_bases;
-
-    // mean length of read1 + read2
-    double mean_length = static_cast<double>(total_bases) / total_reads * 2.0;
-
-    if (fraction < 0)
-    {
-        fraction = static_cast<double>(bases) / total_bases;
-    }
-
-    summary.expected_subsample_fraction = fraction;
-
-    if (bases < 0)
-    {
-        bases = static_cast<int64_t>(std::round(fraction * total_bases));
     }
 
     std::ostringstream pigz_command;
     pigz_command << pigz << " -" << compress_level << " -p" << num_threads;
 
-    FastxSample(input1, input2, output1, output2,
-        fraction, bases, mean_length, seed, pigz_command.str(), summary);
-
-    summary.expected_subsample_bases = bases;
-
-    summary.real_subsample_fraction =
-        static_cast<double>(summary.real_subsample_bases) / summary.total_bases;
-    
-    std::cerr << "#Subsample Summary" << std::endl;
-    std::cerr << "Total bases: "
-        << summary.total_bases << std::endl;
-    std::cerr << "Expected bases: "
-        << summary.expected_subsample_bases << std::endl;
-    std::cerr << "Real bases: "
-        << summary.real_subsample_bases << std::endl;
-    std::cerr << "Expected fraction: "
-        << summary.expected_subsample_fraction << std::endl;
-    std::cerr << "Real fraction: "
-        << summary.real_subsample_fraction << std::endl;
+    if (bases > 0)
+    {
+        FastxHeadBases(input1, input2, output1, output2, bases,
+            pigz_command.str());
+    } else {
+        std::thread th(FastxHeadReads,
+            input1, output1, reads, pigz_command.str());
+        FastxHeadReads(input2, output2, reads, pigz_command.str());
+        th.join();
+    }
 
     return 0;
 }

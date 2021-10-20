@@ -48,6 +48,8 @@ endif (EXISTS ${HTS_LIB})
 
 
 add_executable(fastx
+    src/common.cpp
+    src/fastx_head.cpp
     src/fastx_sample.cpp
     src/fastx.cpp)
 
