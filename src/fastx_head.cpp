@@ -67,6 +67,8 @@ void FastxHeadBases(
             std::string seq_str2 = kseqToStr(read2);
             fprintf(stream1, "%s\n", seq_str1.c_str());
             fprintf(stream2, "%s\n", seq_str2.c_str());
+        } else {
+            break;
         }
     }
 
@@ -139,6 +141,8 @@ void FastxHeadReads(
         if (read_count <= reads) {
             std::string seq_str = kseqToStr(read);
             fprintf(stream, "%s\n", seq_str.c_str());
+        } else {
+            break;
         }
     }
 
