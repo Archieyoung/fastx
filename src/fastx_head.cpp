@@ -183,7 +183,7 @@ void Usage() {
             << "  -o, --out1, FILE            output fasta/fastq file name for read1.\n"
             << "  -O, --out2, FILE            output fasta/fastq file name for read2.\n"
             << "  -b, --bases, STR            get this value of bases(K/M/G).\n"
-            << "  -n, --number, STR           get this value of reads(K/M/G).\n"
+            << "  -n, --number, STR           get this value of read pairs(K/M/G).\n"
             << "  -p, --pigz, STR             path to pigz program.[pigz]\n"
             << "  -l, --level, INT            compression level(0 to 9, or 11).[6]\n"
             << "  -t, --thread, INT           number of threads for running pigz.[4]\n"
