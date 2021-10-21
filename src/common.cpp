@@ -105,7 +105,7 @@ int64_t BasesStrToInt(const std::string &bases_str) {
             break;
         default:
             bases = boost::lexical_cast<int64_t>(
-                bases_str.substr(0, bases_str.size() - 1));
+                bases_str.substr(0, bases_str.size()));
             break;
     }
 
