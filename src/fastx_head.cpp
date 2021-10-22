@@ -172,9 +172,9 @@ void FastxHeadReads(
 
 static
 void Usage() {
-    std::cerr << "fastx sample " << FASTX_VERSION << std::endl;
+    std::cerr << "fastx head " << FASTX_VERSION << std::endl;
     std::cerr << std::endl;
-    std::cerr << "  subsample sequences.\n"
+    std::cerr << "  get sequences from front of fasta/q files.\n"
               << std::endl;
     std::cerr
             << "Options:\n"
