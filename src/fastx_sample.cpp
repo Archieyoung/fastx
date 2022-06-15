@@ -13,8 +13,11 @@
 #include <thread>
 
 #include <getopt.h>
+#include "htslib/bgzf.h"
+#include "htslib/thread_pool.h"
 #include "zlib.h"
 #include "htslib/kseq.h"
+#include "htslib/hts.h"
 #include "boost/filesystem.hpp"
 #include "boost/lexical_cast.hpp"
 #include "boost/process.hpp"
@@ -31,11 +34,40 @@ struct SubsampleSummary {
 };
 
 
+int BgzfWriteKseq(BGZF *fp, const kseq_t *seq) {
+    int ret;
+    ret = bgzf_write(fp, (seq->qual.l ? "@" : ">"), 1);
+    if (ret < 0) return ret;
+    ret = bgzf_write(fp, seq->name.s, seq->name.l);
+    if (ret < 0) return ret;
+    if (seq->comment.l) {
+        ret = bgzf_write(fp, " ", 1);
+        if (ret < 0) return ret;
+        ret = bgzf_write(fp, seq->comment.s, seq->comment.l);
+        if (ret < 0) return ret;
+    }
+    ret = bgzf_write(fp, "\n", 1);
+    if (ret < 0) return ret;
+    ret = bgzf_write(fp, seq->seq.s, seq->seq.l);
+    if (ret < 0) return ret;
+    ret = bgzf_write(fp, "\n", 1);
+    if (ret < 0) return ret;
+    if (seq->qual.l) {
+        ret = bgzf_write(fp, "+\n", 2);
+        if (ret < 0) return ret;
+        ret = bgzf_write(fp, seq->qual.s, seq->qual.l);
+        if (ret < 0) return ret;
+    }
+    ret = bgzf_write(fp, "\n", 1);
+    return ret;
+}
+
+
 void FastxSample(
     const std::string &ifilename1, const std::string &ifilename2,
     const std::string &ofilename1, const std::string &ofilename2,
     double fraction, int64_t bases, double mean_length, int seed,
-    const std::string &pigz, SubsampleSummary &summary)
+    int compress_level, int threads, SubsampleSummary &summary)
 {
     if (fraction >= 1.0)
     {
@@ -78,19 +110,18 @@ void FastxSample(
     g.seed(seed);
     std::uniform_real_distribution<double> random_u(0.0, 1.0);
 
-    std::ostringstream pigz_command1;
-    std::ostringstream pigz_command2;
-    pigz_command1 << pigz << " - 1> " << ofilename1;
-    pigz_command2 << pigz << " - 1> " << ofilename2; 
-
-    FILE *stream1 = popen(pigz_command1.str().c_str(), "w");
-    FILE *stream2 = popen(pigz_command2.str().c_str(), "w");
-
+    hts_tpool *pool = hts_tpool_init(threads);
+    std::ostringstream mode_str;
+    mode_str << "w" << compress_level;
+    BGZF* bgzfp1 = bgzf_open(ofilename1.c_str(), mode_str.str().c_str());
+    bgzf_thread_pool(bgzfp1, pool, 0);
+    BGZF* bgzfp2 = bgzf_open(ofilename2.c_str(), mode_str.str().c_str());
+    bgzf_thread_pool(bgzfp2, pool, 0);
 
     int64_t total_bases = 0;
     int64_t subsample_bases = 0;
 
-    int ret1, ret2;
+    int ret1, ret2, ret3;
     while ((ret1 = kseq_read(read1) >= 0) &&
         (ret2 = kseq_read(read2) >= 0))
     {
@@ -101,10 +132,18 @@ void FastxSample(
         if (p <= fraction && subsample_bases < bases) {
             subsample_bases += read1->seq.l;
             subsample_bases += read2->seq.l;
-            std::string seq_str1 = kseqToStr(read1);
-            std::string seq_str2 = kseqToStr(read2);
-            fprintf(stream1, "%s\n", seq_str1.c_str());
-            fprintf(stream2, "%s\n", seq_str2.c_str());
+            ret3 = BgzfWriteKseq(bgzfp1, read1);
+            if (ret3 < 0) {
+                std::cerr << "Error! Failed to write read1: "
+                    << read1->name.s << std::endl;
+                std::exit(1);
+            }
+            ret3 = BgzfWriteKseq(bgzfp2, read2);
+            if (ret3 < 0) {
+                std::cerr << "Error! Failed to write read2: "
+                    << read2->name.s << std::endl;
+                std::exit(1);
+            }
         }
         if (subsample_bases >= bases)
         {
@@ -128,28 +167,11 @@ void FastxSample(
 
     kseq_destroy(read1);
     kseq_destroy(read2);
+    bgzf_close(bgzfp1);
+    bgzf_close(bgzfp2);
+    hts_tpool_destroy(pool);
     gzclose(fp1);
     gzclose(fp2);
-
-    fflush(stream1);
-    fflush(stream2);
-
-    ret1 = pclose(stream1);
-    ret2 = pclose(stream2);
-
-    if (ret1 != 0)
-    {
-        std::cerr << "Error! Can not run pigz compression for read1 ! "
-            << "Error code: " << ret1 << std::endl;
-        std::exit(1);
-    }
-
-    if (ret2 != 0)
-    {
-        std::cerr << "Error! Can not run pigz compression for read2 ! "
-            << "Error code: " << ret2 << std::endl;
-        std::exit(1);
-    }
 
     summary.real_subsample_bases = subsample_bases;
 }
@@ -169,10 +191,9 @@ void Usage() {
             << "  -O, --out2, FILE            output fasta/fastq file name for read2.\n"
             << "  -b, --bases, STR            expected bases to subsample(K/M/G).\n"
             << "  -f, --fraction, FLOAT       expected fraction of bases to subsample.\n"
-            << "  -p, --pigz, STR             path to pigz program.[pigz]\n"
             << "  -l, --level, INT            compression level(0 to 9, or 11).[6]\n"
             << "  -s, --seed, INT             random seed.[11]\n"
-            << "  -t, --thread, INT           number of threads for running pigz.[4]\n"
+            << "  -t, --thread, INT           number of threads.[4]\n"
             << "  -h, --help                  print this message and exit.\n"
             << "  -V, --version               print version."
             << std::endl;
@@ -195,7 +216,6 @@ int FastxSampleMain(int argc, char **argv)
             {"bases", required_argument, 0, 'b'},
             {"fraction", required_argument, 0, 'f'},
             {"level", required_argument, 0, 'l'},
-            {"pigz", required_argument, 0, 'p'},
             {"seed", required_argument, 0, 's'},
             {"thread", required_argument, 0, 't'},
             {"help", no_argument, 0, 'h'},
@@ -211,7 +231,6 @@ int FastxSampleMain(int argc, char **argv)
     std::string output2;
     int64_t bases = -1;
     double fraction = -1.0;
-    std::string pigz = "pigz";
     int compress_level = 6;
     int seed = 11;
     int num_threads = 4;
@@ -249,9 +268,6 @@ int FastxSampleMain(int argc, char **argv)
                         << std::endl;
                     std::exit(1);
                 }
-                break;
-            case 'p':
-                pigz = optarg;
                 break;
             case 'l':
                 compress_level = boost::lexical_cast<int>(optarg);
@@ -310,11 +326,9 @@ int FastxSampleMain(int argc, char **argv)
         bases = static_cast<int64_t>(std::round(fraction * total_bases));
     }
 
-    std::ostringstream pigz_command;
-    pigz_command << pigz << " -" << compress_level << " -p" << num_threads;
-
     FastxSample(input1, input2, output1, output2,
-        fraction, bases, mean_length, seed, pigz_command.str(), summary);
+        fraction, bases, mean_length, seed, compress_level,
+        num_threads, summary);
 
     summary.expected_subsample_bases = bases;
 
