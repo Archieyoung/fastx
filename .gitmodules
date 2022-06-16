@@ -1,3 +1,6 @@
 [submodule "vendor/htslib"]
 	path = vendor/htslib
 	url = git@github.com:samtools/htslib.git
+[submodule "vendor/libdeflate"]
+	path = vendor/libdeflate
+	url = git@github.com:ebiggers/libdeflate.git
