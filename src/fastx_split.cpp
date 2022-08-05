@@ -10,7 +10,9 @@
 #include <getopt.h>
 #include "fastx_split.hpp"
 #include "common.hpp"
+#include "htslib/bgzf.h"
 #include "version.hpp"
+#include "htslib/thread_pool.h"
 
 // static
 // int NumberOfDigits(int64_t number)
@@ -26,7 +28,7 @@
 
 void FastxSplit(const std::string &ifilename, int64_t reads,
     int64_t bases, const std::string &prefix, const std::string &suffix,
-    const std::string &pigz)
+    int threads, int compress_level)
 {
     if (reads <= 0 && bases <= 0) return;
     if (reads > 0 && bases > 0) {
@@ -52,10 +54,11 @@ void FastxSplit(const std::string &ifilename, int64_t reads,
 
     std::ostringstream ofilename;
     ofilename << prefix << "." << n << "." << suffix;
-    std::ostringstream pigz_command;
-    pigz_command << pigz << " - 1> " << ofilename.str();
-
-    FILE *stream = popen(pigz_command.str().c_str(), "w");
+    hts_tpool *pool = hts_tpool_init(threads);
+    std::ostringstream mode_str;
+    mode_str << "w" << compress_level;
+    BGZF* bgzfp = bgzf_open(ofilename.str().c_str(), mode_str.str().c_str());
+    bgzf_thread_pool(bgzfp, pool, 0);
 
     while ((ret = kseq_read(read)) >= 0)
     {
@@ -66,8 +69,7 @@ void FastxSplit(const std::string &ifilename, int64_t reads,
             } else {
                 base_count += read->seq.l;
             }
-            std::string seq_str1 = kseqToStr(read);
-            fprintf(stream, "%s\n", seq_str1.c_str());
+            BgzfWriteKseq(bgzfp, read);
             if (split_by_reads && read_count >= reads)
             {
                 open_new = true;
@@ -79,18 +81,10 @@ void FastxSplit(const std::string &ifilename, int64_t reads,
         } else {
             ++n;
             ofilename.str("");   // clear
+            bgzf_close(bgzfp);
             ofilename << prefix << "." << n << "." << suffix;
-            pigz_command.str("");  // clear
-            pigz_command << pigz << " - 1> " << ofilename.str();
-            fflush(stream);
-            int ret1 = pclose(stream);
-            if (ret1 != 0)
-            {
-                std::cerr << "Error! pigz compression error! Error code: "
-                    << ret1 << std::endl;
-                std::exit(1);
-            }
-            stream = popen(pigz_command.str().c_str(), "w");
+            bgzfp = bgzf_open(ofilename.str().c_str(), mode_str.str().c_str());
+            bgzf_thread_pool(bgzfp, pool, 0);
             base_count = 0;
             read_count = 0;
             if (split_by_reads)
@@ -99,19 +93,14 @@ void FastxSplit(const std::string &ifilename, int64_t reads,
             } else {
                 base_count += read->seq.l;
             }
-            std::string seq_str1 = kseqToStr(read);
-            fprintf(stream, "%s\n", seq_str1.c_str());
+            BgzfWriteKseq(bgzfp, read);
         }
     }
 
-    fflush(stream);
-    int ret1 = pclose(stream);
-    if (ret1 != 0)
-    {
-        std::cerr << "Error! pigz compression error! Error code: "
-            << ret1 << std::endl;
-        std::exit(1);
-    }
+    bgzf_close(bgzfp);
+    hts_tpool_destroy(pool);
+    kseq_destroy(read);
+    gzclose(fp);
 }
 
 static
@@ -129,7 +118,6 @@ void Usage() {
             << "  -b, --bases, STR            put this value of bases per output file(K/M/G).\n"
             << "  -r, --reads, STR            put this value of reads per output file(K/M/G).\n"
             << "  -n, --number, int           generate this value of output files"
-            << "  -p, --pigz, STR             path to pigz program.[pigz]\n"
             << "  -l, --level, INT            compression level(0 to 9, or 11).[6]\n"
             << "  -t, --thread, INT           number of threads for running pigz.[4]\n"
             << "  -h, --help                  print this message and exit.\n"
@@ -154,7 +142,6 @@ int FastxSplit(int argc, char **argv)
             {"bases", required_argument, 0, 'b'},
             {"reads", required_argument, 0, 'r'},
             {"number", required_argument, 0, 'n'},
-            {"pigz", required_argument, 0, 'p'},
             {"level", required_argument, 0, 'l'},
             {"thread", required_argument, 0, 't'},
             {"help", no_argument, 0, 'h'},
@@ -171,7 +158,6 @@ int FastxSplit(int argc, char **argv)
     int64_t bases = -1;
     int64_t reads = -1;
     int number = -1;
-    std::string pigz = "pigz";
     int compress_level = 6;
     int num_threads = 4;
 
@@ -218,9 +204,6 @@ int FastxSplit(int argc, char **argv)
                     std::exit(1);
                 }
                 break;
-            case 'p':
-                pigz = optarg;
-                break;
             case 'l':
                 compress_level = boost::lexical_cast<int>(optarg);
                 break;
@@ -253,9 +236,6 @@ int FastxSplit(int argc, char **argv)
         std::exit(1);
     }
 
-    std::ostringstream pigz_command;
-    pigz_command << pigz << " -" << compress_level << " -p" << num_threads;
-
     // single end
     if (!input1.empty() && input2.empty())
     {
@@ -265,7 +245,7 @@ int FastxSplit(int argc, char **argv)
             int64_t total_bases;
             FastxCount(input1, total_reads, total_bases);
             bases = static_cast<double>(total_bases) / number;
-            FastxSplit(input1, -1, bases, "T1", "fastq.gz", pigz_command.str());
+            FastxSplit(input1, -1, bases, "T1", "fastq.gz", num_threads, compress_level);
         }
     }
 

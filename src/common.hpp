@@ -5,6 +5,7 @@
 #include <string>
 #include "zlib.h"
 #include "htslib/kseq.h"
+#include "htslib/bgzf.h"
 
 KSEQ_INIT(gzFile, gzread)
 
@@ -19,5 +20,8 @@ void FastxCountPair(const std::string &ifilename1,
 std::string kseqToStr(const kseq_t *seq);
 
 int64_t BasesStrToInt(const std::string &bases_str);
+
+
+int BgzfWriteKseq(BGZF *fp, const kseq_t *seq);
 
 #endif  // FASTX_COMMON_HPP

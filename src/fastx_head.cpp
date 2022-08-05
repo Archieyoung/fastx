@@ -15,6 +15,7 @@
 #include <getopt.h>
 #include "zlib.h"
 #include "htslib/kseq.h"
+#include "htslib/thread_pool.h"
 #include "boost/filesystem.hpp"
 #include "boost/lexical_cast.hpp"
 #include "boost/process.hpp"
@@ -26,7 +27,7 @@
 void FastxHeadBases(
     const std::string &ifilename1, const std::string &ifilename2,
     const std::string &ofilename1, const std::string &ofilename2,
-    int64_t bases, const std::string &pigz)
+    int64_t bases, int threads, int compress_level)
 {
     gzFile fp1 = gzopen(ifilename1.c_str(), "r");
     gzFile fp2 = gzopen(ifilename2.c_str(), "r");
@@ -46,27 +47,35 @@ void FastxHeadBases(
     kseq_t *read1 = kseq_init(fp1);
     kseq_t *read2 = kseq_init(fp2);
 
-    std::ostringstream pigz_command1;
-    std::ostringstream pigz_command2;
-    pigz_command1 << pigz << " - 1> " << ofilename1;
-    pigz_command2 << pigz << " - 1> " << ofilename2; 
-
-    FILE *stream1 = popen(pigz_command1.str().c_str(), "w");
-    FILE *stream2 = popen(pigz_command2.str().c_str(), "w");
+    hts_tpool *pool = hts_tpool_init(threads);
+    std::ostringstream mode_str;
+    mode_str << "w" << compress_level;
+    BGZF* bgzfp1 = bgzf_open(ofilename1.c_str(), mode_str.str().c_str());
+    bgzf_thread_pool(bgzfp1, pool, 0);
+    BGZF* bgzfp2 = bgzf_open(ofilename2.c_str(), mode_str.str().c_str());
+    bgzf_thread_pool(bgzfp2, pool, 0);
 
     int64_t base_count = 0;
 
-    int ret1, ret2;
+    int ret1, ret2, ret3;
     while ((ret1 = kseq_read(read1) >= 0) &&
         (ret2 = kseq_read(read2) >= 0))
     {
         base_count += read1->seq.l;
         base_count += read2->seq.l;
         if (base_count <= bases) {
-            std::string seq_str1 = kseqToStr(read1);
-            std::string seq_str2 = kseqToStr(read2);
-            fprintf(stream1, "%s\n", seq_str1.c_str());
-            fprintf(stream2, "%s\n", seq_str2.c_str());
+            ret3 = BgzfWriteKseq(bgzfp1, read1);
+            if (ret3 < 0) {
+                std::cerr << "Error! Failed to write read1: "
+                    << read1->name.s << std::endl;
+                std::exit(1);
+            }
+            ret3 = BgzfWriteKseq(bgzfp2, read2);
+            if (ret3 < 0) {
+                std::cerr << "Error! Failed to write read2: "
+                    << read2->name.s << std::endl;
+                std::exit(1);
+            }
         } else {
             break;
         }
@@ -88,14 +97,11 @@ void FastxHeadBases(
 
     kseq_destroy(read1);
     kseq_destroy(read2);
+    bgzf_close(bgzfp1);
+    bgzf_close(bgzfp2);
+    hts_tpool_destroy(pool);
     gzclose(fp1);
     gzclose(fp2);
-
-    fflush(stream1);
-    fflush(stream2);
-
-    ret1 = pclose(stream1);
-    ret2 = pclose(stream2);
 
     if (ret1 != 0)
     {
@@ -115,7 +121,7 @@ void FastxHeadBases(
 
 void FastxHeadReads(
     const std::string &ifilename, const std::string &ofilename,
-    int64_t reads, const std::string &pigz)
+    int64_t reads, int threads, int compress_level)
 {
     gzFile fp = gzopen(ifilename.c_str(), "r");
 
@@ -127,20 +133,25 @@ void FastxHeadReads(
 
     kseq_t *read = kseq_init(fp);
 
-    std::ostringstream pigz_command;
-    pigz_command << pigz << " - 1> " << ofilename;
-
-    FILE *stream = popen(pigz_command.str().c_str(), "w");
+    hts_tpool *pool = hts_tpool_init(threads);
+    std::ostringstream mode_str;
+    mode_str << "w" << compress_level;
+    BGZF* bgzfp = bgzf_open(ofilename.c_str(), mode_str.str().c_str());
+    bgzf_thread_pool(bgzfp, pool, 0);
 
     int64_t read_count = 0;
 
-    int ret;
+    int ret, ret1;
     while ((ret = kseq_read(read)) >= 0)
     {
         ++read_count;
         if (read_count <= reads) {
-            std::string seq_str = kseqToStr(read);
-            fprintf(stream, "%s\n", seq_str.c_str());
+            ret1 = BgzfWriteKseq(bgzfp, read);
+            if (ret1 < 0) {
+                std::cerr << "Error! Failed to write read2: "
+                    << read->name.s << std::endl;
+                std::exit(1);
+            }
         } else {
             break;
         }
@@ -155,11 +166,9 @@ void FastxHeadReads(
     }
 
     kseq_destroy(read);
+    bgzf_close(bgzfp);
+    hts_tpool_destroy(pool);
     gzclose(fp);
-
-    fflush(stream);
-
-    ret = pclose(stream);
 
     if (ret != 0)
     {
@@ -184,7 +193,6 @@ void Usage() {
             << "  -O, --out2, FILE            output fasta/fastq file name for read2.\n"
             << "  -b, --bases, STR            get this value of bases(K/M/G).\n"
             << "  -n, --number, STR           get this value of read pairs(K/M/G).\n"
-            << "  -p, --pigz, STR             path to pigz program.[pigz]\n"
             << "  -l, --level, INT            compression level(0 to 9, or 11).[6]\n"
             << "  -t, --thread, INT           number of threads for running pigz.[4]\n"
             << "  -h, --help                  print this message and exit.\n"
@@ -210,7 +218,6 @@ int FastxHeadMain(int argc, char **argv)
             {"number", required_argument, 0, 'n'},
             {"fraction", required_argument, 0, 'f'},
             {"level", required_argument, 0, 'l'},
-            {"pigz", required_argument, 0, 'p'},
             {"seed", required_argument, 0, 's'},
             {"thread", required_argument, 0, 't'},
             {"help", no_argument, 0, 'h'},
@@ -226,7 +233,6 @@ int FastxHeadMain(int argc, char **argv)
     std::string output2;
     int64_t bases = -1;
     int64_t reads = -1;
-    std::string pigz = "pigz";
     int compress_level = 6;
     int num_threads = 4;
 
@@ -264,9 +270,6 @@ int FastxHeadMain(int argc, char **argv)
                     std::exit(1);
                 }
                 break;
-            case 'p':
-                pigz = optarg;
-                break;
             case 'l':
                 compress_level = boost::lexical_cast<int>(optarg);
                 break;
@@ -299,17 +302,14 @@ int FastxHeadMain(int argc, char **argv)
         std::exit(1);
     }
 
-    std::ostringstream pigz_command;
-    pigz_command << pigz << " -" << compress_level << " -p" << num_threads;
-
     if (bases > 0)
     {
         FastxHeadBases(input1, input2, output1, output2, bases,
-            pigz_command.str());
+            num_threads, compress_level);
     } else {
         std::thread th(FastxHeadReads,
-            input1, output1, reads, pigz_command.str());
-        FastxHeadReads(input2, output2, reads, pigz_command.str());
+            input1, output1, reads, num_threads, compress_level);
+        FastxHeadReads(input2, output2, reads, num_threads, compress_level);
         th.join();
     }
 

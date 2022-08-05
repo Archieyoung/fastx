@@ -34,35 +34,6 @@ struct SubsampleSummary {
 };
 
 
-int BgzfWriteKseq(BGZF *fp, const kseq_t *seq) {
-    int ret;
-    ret = bgzf_write(fp, (seq->qual.l ? "@" : ">"), 1);
-    if (ret < 0) return ret;
-    ret = bgzf_write(fp, seq->name.s, seq->name.l);
-    if (ret < 0) return ret;
-    if (seq->comment.l) {
-        ret = bgzf_write(fp, " ", 1);
-        if (ret < 0) return ret;
-        ret = bgzf_write(fp, seq->comment.s, seq->comment.l);
-        if (ret < 0) return ret;
-    }
-    ret = bgzf_write(fp, "\n", 1);
-    if (ret < 0) return ret;
-    ret = bgzf_write(fp, seq->seq.s, seq->seq.l);
-    if (ret < 0) return ret;
-    ret = bgzf_write(fp, "\n", 1);
-    if (ret < 0) return ret;
-    if (seq->qual.l) {
-        ret = bgzf_write(fp, "+\n", 2);
-        if (ret < 0) return ret;
-        ret = bgzf_write(fp, seq->qual.s, seq->qual.l);
-        if (ret < 0) return ret;
-    }
-    ret = bgzf_write(fp, "\n", 1);
-    return ret;
-}
-
-
 void FastxSample(
     const std::string &ifilename1, const std::string &ifilename2,
     const std::string &ofilename1, const std::string &ofilename2,
