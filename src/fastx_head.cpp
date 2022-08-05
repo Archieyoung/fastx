@@ -102,20 +102,6 @@ void FastxHeadBases(
     hts_tpool_destroy(pool);
     gzclose(fp1);
     gzclose(fp2);
-
-    if (ret1 != 0)
-    {
-        std::cerr << "Error! Can not run pigz compression for read1 ! "
-            << "Error code: " << ret1 << std::endl;
-        std::exit(1);
-    }
-
-    if (ret2 != 0)
-    {
-        std::cerr << "Error! Can not run pigz compression for read2 ! "
-            << "Error code: " << ret2 << std::endl;
-        std::exit(1);
-    }
 }
 
 
@@ -169,13 +155,6 @@ void FastxHeadReads(
     bgzf_close(bgzfp);
     hts_tpool_destroy(pool);
     gzclose(fp);
-
-    if (ret != 0)
-    {
-        std::cerr << "Error! Can not run pigz compression! "
-            << "Error code: " << ret << std::endl;
-        std::exit(1);
-    }
 }
 
 
@@ -194,7 +173,7 @@ void Usage() {
             << "  -b, --bases, STR            get this value of bases(K/M/G).\n"
             << "  -n, --number, STR           get this value of read pairs(K/M/G).\n"
             << "  -l, --level, INT            compression level(0 to 9, or 11).[6]\n"
-            << "  -t, --thread, INT           number of threads for running pigz.[4]\n"
+            << "  -t, --thread, INT           number of threads.[4]\n"
             << "  -h, --help                  print this message and exit.\n"
             << "  -V, --version               print version."
             << std::endl;
