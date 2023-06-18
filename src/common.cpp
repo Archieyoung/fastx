@@ -52,6 +52,13 @@ void FastxCountPair(const std::string &ifilename1,
     
     th.join();
 
+    if (read1_counts != read2_counts) {
+        std::cerr << "Error! Record number not equal for paired inputs."
+            << "Input1 has " << read1_counts << " records, but "
+            << "Input1 has " << read2_counts << " records" << std::endl;
+        std::exit(1);
+    }
+
     reads = read1_counts + read2_counts;
     bases = read1_bases + read2_bases; 
 }

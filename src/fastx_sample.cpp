@@ -11,19 +11,18 @@
 #include <cstdlib>
 #include <cstdio>
 #include <thread>
+#include <filesystem>
 
 #include <getopt.h>
 #include "htslib/bgzf.h"
 #include "htslib/thread_pool.h"
 #include "zlib.h"
-#include "htslib/kseq.h"
 #include "htslib/hts.h"
-#include "boost/filesystem.hpp"
-#include "boost/lexical_cast.hpp"
-#include "boost/process.hpp"
 #include "common.hpp"
 #include "version.hpp"
+#include "seq_reader.hpp"
 
+namespace fs = std::filesystem;
 
 struct SubsampleSummary {
     int64_t total_bases;
@@ -34,7 +33,87 @@ struct SubsampleSummary {
 };
 
 
-void FastxSample(
+void FastxSampleSingle(
+    const std::string &ifilename1, const std::string &ofilename1, 
+    double fraction, int64_t bases, double mean_length, int seed,
+    int compress_level, int threads, SubsampleSummary &summary)
+{
+    if (fraction >= 1.0)
+    {
+        fs::copy_file(ifilename1, ofilename1,
+            fs::copy_options::overwrite_existing);
+        summary.real_subsample_bases = summary.total_bases;
+        summary.real_subsample_fraction = 1.0;
+        return;
+    }
+
+    // subsample
+
+    // scale fraction to 'avoid' subsample less bases than expected, 
+    // side effect is that reads in the front of the files are more likely to be 
+    // sampled than reads in the tail of the files
+    fraction *= 1.05;
+
+    gzFile fp1 = gzopen(ifilename1.c_str(), "r");
+
+    if (fp1 == nullptr)
+    {
+        std::perror(("Error! Can not open " + ifilename1).c_str());
+        std::exit(1);
+    }
+
+    kseq_t *read1 = kseq_init(fp1);
+
+    std::random_device rd;
+    std::mt19937 g(rd());
+    g.seed(seed);
+    std::uniform_real_distribution<double> random_u(0.0, 1.0);
+
+    hts_tpool *pool = hts_tpool_init(threads);
+    std::ostringstream mode_str;
+    mode_str << "w" << compress_level;
+    BGZF* bgzfp1 = bgzf_open(ofilename1.c_str(), mode_str.str().c_str());
+    bgzf_thread_pool(bgzfp1, pool, 0);
+
+    int64_t subsample_bases = 0;
+
+    int ret1, ret2;
+    while ((ret1 = kseq_read(read1)) >= 0)
+    {
+        // weight p by read length
+        double p = random_u(g) * read1->seq.l / mean_length;
+        if (p <= fraction && subsample_bases < bases) {
+            subsample_bases += read1->seq.l;
+            ret2 = BgzfWriteKseq(bgzfp1, read1);
+            if (ret2 < 0) {
+                std::cerr << "Error! Failed to write read: "
+                    << read1->name.s << std::endl;
+                std::exit(1);
+            }
+        }
+        if (subsample_bases >= bases)
+        {
+            break;
+        }
+    }
+
+    if (ret1 < -1)
+    {
+        std::cerr << "Error! Input fastq1 truncated! Last read name was "
+            << read1->name.s << std::endl;
+        std::exit(1);
+    }
+
+    kseq_destroy(read1);
+    bgzf_close(bgzfp1);
+    hts_tpool_destroy(pool);
+    gzclose(fp1);
+
+    summary.real_subsample_bases = subsample_bases;
+}
+
+
+void FastxSamplePair(
     const std::string &ifilename1, const std::string &ifilename2,
     const std::string &ofilename1, const std::string &ofilename2,
     double fraction, int64_t bases, double mean_length, int seed,
@@ -42,10 +121,10 @@ void FastxSample(
 {
     if (fraction >= 1.0)
     {
-        boost::filesystem::copy_file(ifilename1, ofilename1,
-            boost::filesystem::copy_option::overwrite_if_exists);
-        boost::filesystem::copy_file(ifilename2, ofilename2,
-            boost::filesystem::copy_option::overwrite_if_exists);
+        fs::copy_file(ifilename1, ofilename1,
+            fs::copy_options::overwrite_existing);
+        fs::copy_file(ifilename2, ofilename2,
+            fs::copy_options::overwrite_existing);
         summary.real_subsample_bases = summary.total_bases;
         summary.real_subsample_fraction = 1.0;
         return;
@@ -73,8 +152,11 @@ void FastxSample(
         std::exit(1);
     }
 
-    kseq_t *read1 = kseq_init(fp1);
-    kseq_t *read2 = kseq_init(fp2);
+    // kseq_t *read1 = kseq_init(fp1);
+    // kseq_t *read2 = kseq_init(fp2);
+
+    SeqReader reader1 = SeqReader(fp1);
+    SeqReader reader2 = SeqReader(fp2);
 
     std::random_device rd;
     std::mt19937 g(rd());
@@ -89,15 +171,14 @@ void FastxSample(
     BGZF* bgzfp2 = bgzf_open(ofilename2.c_str(), mode_str.str().c_str());
     bgzf_thread_pool(bgzfp2, pool, 0);
 
-    int64_t total_bases = 0;
     int64_t subsample_bases = 0;
 
     int ret1, ret2, ret3;
-    while ((ret1 = kseq_read(read1) >= 0) &&
-        (ret2 = kseq_read(read2) >= 0))
+    kseq_t *read1 = nullptr;
+    kseq_t *read2 = nullptr;
+    while ((read1 = reader1.read()) != nullptr &&
+        (read2 = reader2.read()) != nullptr)
     {
-        total_bases += read1->seq.l;
-        total_bases += read2->seq.l;
         // weight p by read length
         double p = random_u(g) * (read1->seq.l + read2->seq.l) / mean_length;
         if (p <= fraction && subsample_bases < bases) {
@@ -122,22 +203,26 @@ void FastxSample(
         }
     }
 
-    if (ret1 < -1)
-    {
-        std::cerr << "Error! Input fastq1 truncated! Last read name was "
-            << read1->name.s << std::endl;
-        std::exit(1);
-    }
 
-    if (ret2 < -1)
-    {
-        std::cerr << "Error! Input fastq2 truncated! Last read name was "
-            << read2->name.s << std::endl;
-        std::exit(1);
-    }
+    reader1.join();
+    reader2.join();
 
-    kseq_destroy(read1);
-    kseq_destroy(read2);
+    // if (ret1 < -1)
+    // {
+    //     std::cerr << "Error! Input fastq1 truncated! Last read name was "
+    //         << read1->name.s << std::endl;
+    //     std::exit(1);
+    // }
+
+    // if (ret2 < -1)
+    // {
+    //     std::cerr << "Error! Input fastq2 truncated! Last read name was "
+    //         << read2->name.s << std::endl;
+    //     std::exit(1);
+    // }
+
+    // kseq_destroy(read1);
+    // kseq_destroy(read2);
     bgzf_close(bgzfp1);
     bgzf_close(bgzfp2);
     hts_tpool_destroy(pool);
@@ -232,7 +317,8 @@ int FastxSampleMain(int argc, char **argv)
                 }
                 break;
             case 'f':
-                fraction = boost::lexical_cast<double>(optarg);
+                char *ptr;
+                fraction = std::strtod(optarg, &ptr);
                 if (fraction <= 0)
                 {
                     std::cerr << "Error! input fraction must be positive!"
@@ -241,13 +327,13 @@ int FastxSampleMain(int argc, char **argv)
                 }
                 break;
             case 'l':
-                compress_level = boost::lexical_cast<int>(optarg);
+                compress_level = atoi(optarg);
                 break;
             case 's':
-                seed = boost::lexical_cast<int>(optarg);
+                seed = atoi(optarg);
                 break;
             case 't':
-                num_threads = boost::lexical_cast<int>(optarg);
+                num_threads = atoi(optarg);
                 break;
             case 'h':
                 Usage();
@@ -259,6 +345,25 @@ int FastxSampleMain(int argc, char **argv)
                 Usage();
                 return 1;
         }
+    }
+
+    if (input1.empty()) {
+        std::cerr << "Error! Must set at least one input fasta/fastq file "
+            << "using -i(--in1)." << std::endl;
+        std::exit(1);
+    }
+
+    if (output1.empty()) {
+        std::cerr << "Error! Must set at least one output fasta/fastq file "
+            << "using -o(--out1)." << std::endl;
+        std::exit(1);
+    }
+
+    if (!input2.empty() && output2.empty()) {
+        std::cerr << "Error! Must set at the second output fasta/fastq file "
+            << "using -O(--out2) When inputting 2 fasta/fastq files."
+            << std::endl;
+        std::exit(1);
     }
 
     if (bases < 0 && fraction < 0)
@@ -275,47 +380,81 @@ int FastxSampleMain(int argc, char **argv)
         std::exit(1);
     }
 
+    if (num_threads < 1) {
+        std::cerr << "Error! Number of threads -t(--threads) must greater"
+            << " than 0" << std::endl;
+        std::exit(1);
+    }
+
     SubsampleSummary summary;
 
-    int64_t total_reads, total_bases;
-    FastxCountPair(input1, input2, total_reads, total_bases);
+    if (input2.empty()) {
+        // single read
+        int64_t total_reads, total_bases;
+        FastxCount(input1, total_reads, total_bases);
+        summary.total_bases = total_bases;
 
-    summary.total_bases = total_bases;
+        double mean_length = static_cast<double>(total_bases) / total_reads;
 
-    // mean length of read1 + read2
-    double mean_length = static_cast<double>(total_bases) / total_reads * 2.0;
+        if (fraction < 0)
+        {
+            fraction = static_cast<double>(bases) / total_bases;
+        }
 
-    if (fraction < 0)
-    {
-        fraction = static_cast<double>(bases) / total_bases;
+        summary.expected_subsample_fraction = fraction;
+
+        if (bases < 0)
+        {
+            bases = static_cast<int64_t>(std::round(fraction * total_bases));
+        }
+
+        FastxSampleSingle(input1, output1,
+            fraction, bases, mean_length, seed, compress_level,
+            num_threads, summary);
+    } else {
+        // paired reads
+        int64_t total_reads, total_bases;
+        FastxCountPair(input1, input2, total_reads, total_bases);
+
+        summary.total_bases = total_bases;
+
+        // mean length of read1 + read2
+        double mean_length =
+            static_cast<double>(total_bases) / total_reads * 2.0;
+
+        if (fraction < 0)
+        {
+            fraction = static_cast<double>(bases) / total_bases;
+        }
+
+        summary.expected_subsample_fraction = fraction;
+
+        if (bases < 0)
+        {
+            bases = static_cast<int64_t>(std::round(fraction * total_bases));
+        }
+
+        FastxSamplePair(input1, input2, output1, output2,
+            fraction, bases, mean_length, seed, compress_level,
+            num_threads, summary);
     }
-
-    summary.expected_subsample_fraction = fraction;
-
-    if (bases < 0)
-    {
-        bases = static_cast<int64_t>(std::round(fraction * total_bases));
-    }
-
-    FastxSample(input1, input2, output1, output2,
-        fraction, bases, mean_length, seed, compress_level,
-        num_threads, summary);
 
     summary.expected_subsample_bases = bases;
 
     summary.real_subsample_fraction =
-        static_cast<double>(summary.real_subsample_bases) / summary.total_bases;
+        static_cast<double>(
+            summary.real_subsample_bases) / summary.total_bases;
     
-    std::cerr << "#Subsample Summary" << std::endl;
-    std::cerr << "Total bases: "
+    std::cout << "#Subsample Summary" << std::endl;
+    std::cout << "Total bases: "
         << summary.total_bases << std::endl;
-    std::cerr << "Expected bases: "
+    std::cout << "Expected bases: "
         << summary.expected_subsample_bases << std::endl;
-    std::cerr << "Real bases: "
+    std::cout << "Real bases: "
         << summary.real_subsample_bases << std::endl;
-    std::cerr << "Expected fraction: "
+    std::cout << "Expected fraction: "
         << summary.expected_subsample_fraction << std::endl;
-    std::cerr << "Real fraction: "
+    std::cout << "Real fraction: "
         << summary.real_subsample_fraction << std::endl;
 
     return 0;

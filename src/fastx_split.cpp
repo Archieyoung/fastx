@@ -8,7 +8,7 @@
 #include <cstdio>
 #include <zlib.h>
 #include <getopt.h>
-#include "fastx_split.hpp"
+#include <thread>
 #include "common.hpp"
 #include "htslib/bgzf.h"
 #include "version.hpp"
@@ -26,29 +26,18 @@
 //     return n;
 // }
 
-void FastxSplit(const std::string &ifilename, int64_t reads,
-    int64_t bases, const std::string &prefix, const std::string &suffix,
+void FastxSplitReads(const std::string &ifilename, int64_t reads,
+    int max_chunks, const std::string &prefix, const std::string &suffix,
     int threads, int compress_level)
 {
-    if (reads <= 0 && bases <= 0) return;
-    if (reads > 0 && bases > 0) {
-        std::cerr << "Error! Must input one of reads and bases "
-            << "per output file not both!" << std::endl;
-        std::exit(1);
-    }
-
-    bool split_by_reads = false;
-    if (reads > 0)
-    {
-        split_by_reads = true;
-    }
+    if (reads <= 0) return;
 
     gzFile fp = gzopen(ifilename.c_str(), "r");
+
     kseq_t *read = kseq_init(fp);
 
     int ret;
     int64_t read_count = 0;
-    int64_t base_count = 0;
     bool open_new = false;
     int64_t n = 0;
 
@@ -62,38 +51,25 @@ void FastxSplit(const std::string &ifilename, int64_t reads,
 
     while ((ret = kseq_read(read)) >= 0)
     {
-        if (open_new) {
-            if (split_by_reads)
-            {
-                ++read_count;
-            } else {
-                base_count += read->seq.l;
-            }
+        if (!open_new) {
+            ++read_count;
             BgzfWriteKseq(bgzfp, read);
-            if (split_by_reads && read_count >= reads)
-            {
-                open_new = true;
-            }
-            if (!split_by_reads && base_count >= bases)
+            if (read_count >= reads)
             {
                 open_new = true;
             }
         } else {
             ++n;
+            if (n > max_chunks) break;
             ofilename.str("");   // clear
             bgzf_close(bgzfp);
             ofilename << prefix << "." << n << "." << suffix;
             bgzfp = bgzf_open(ofilename.str().c_str(), mode_str.str().c_str());
             bgzf_thread_pool(bgzfp, pool, 0);
-            base_count = 0;
             read_count = 0;
-            if (split_by_reads)
-            {
-                ++read_count;
-            } else {
-                base_count += read->seq.l;
-            }
+            ++read_count;
             BgzfWriteKseq(bgzfp, read);
+            open_new = false;
         }
     }
 
@@ -119,14 +95,14 @@ void Usage() {
             << "  -r, --reads, STR            put this value of reads per output file(K/M/G).\n"
             << "  -n, --number, int           generate this value of output files"
             << "  -l, --level, INT            compression level(0 to 9, or 11).[6]\n"
-            << "  -t, --thread, INT           number of threads for running pigz.[4]\n"
+            << "  -t, --thread, INT           number of threads.[4]\n"
             << "  -h, --help                  print this message and exit.\n"
             << "  -V, --version               print version."
             << std::endl;
 }
 
 
-int FastxSplit(int argc, char **argv)
+int FastxSplitMain(int argc, char **argv)
 {
     if (argc == 1)
     {
@@ -137,8 +113,7 @@ int FastxSplit(int argc, char **argv)
     static const struct option long_options[] = {
             {"in1", required_argument, 0, 'i'},
             {"in2", required_argument, 0, 'I'},
-            {"out1", required_argument, 0, 'o'},
-            {"out2", required_argument, 0, 'O'},
+            {"prefix", required_argument, 0, 'p'},
             {"bases", required_argument, 0, 'b'},
             {"reads", required_argument, 0, 'r'},
             {"number", required_argument, 0, 'n'},
@@ -149,12 +124,11 @@ int FastxSplit(int argc, char **argv)
     };
 
     int c, long_idx;
-    const char *opt_str = "i:I:o:O:b:f:p:l:s:t:hV";
+    const char *opt_str = "i:I:p:b:r:n:l:t:hV";
 
     std::string input1 = "";
     std::string input2 = "";
-    std::string output1 = "";
-    std::string output2 = "";
+    std::string prefix = "";
     int64_t bases = -1;
     int64_t reads = -1;
     int number = -1;
@@ -171,11 +145,8 @@ int FastxSplit(int argc, char **argv)
             case 'I':
                 input2 = optarg;
                 break;
-            case 'o':
-                output1 = optarg;
-                break;
-            case 'O':
-                output2 = optarg;
+            case 'p':
+                prefix = optarg;
                 break;
             case 'b':
                 bases = BasesStrToInt(optarg);
@@ -196,7 +167,7 @@ int FastxSplit(int argc, char **argv)
                 }
                 break;
             case 'n':
-                number = boost::lexical_cast<int>(opt_str);
+                number = boost::lexical_cast<int>(optarg);
                 if (number <= 0)
                 {
                     std::cerr << "Error! input number must be positive!"
@@ -236,19 +207,8 @@ int FastxSplit(int argc, char **argv)
         std::exit(1);
     }
 
-    // single end
-    if (!input1.empty() && input2.empty())
-    {
-        if (number > 0)
-        {
-            int64_t total_reads;
-            int64_t total_bases;
-            FastxCount(input1, total_reads, total_bases);
-            bases = static_cast<double>(total_bases) / number;
-            FastxSplit(input1, -1, bases, "T1", "fastq.gz", num_threads, compress_level);
-        }
-    }
-
+    FastxSplitReads(input1, reads, number, prefix, "R1.fastq.gz", num_threads, compress_level);
+    FastxSplitReads(input2, reads, number, prefix, "R2.fastq.gz", num_threads, compress_level);
     return 0;
 }
 

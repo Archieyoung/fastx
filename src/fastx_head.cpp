@@ -14,17 +14,64 @@
 
 #include <getopt.h>
 #include "zlib.h"
-#include "htslib/kseq.h"
 #include "htslib/thread_pool.h"
-#include "boost/filesystem.hpp"
-#include "boost/lexical_cast.hpp"
-#include "boost/process.hpp"
 #include "common.hpp"
 #include "version.hpp"
 
 
+void FastxHeadBasesSingle(
+    const std::string &ifilename1, const std::string &ofilename1,
+    int64_t bases, int threads, int compress_level)
+{
+    gzFile fp1 = gzopen(ifilename1.c_str(), "r");
 
-void FastxHeadBases(
+    if (fp1 == nullptr)
+    {
+        std::perror(("Error! Can not open " + ifilename1).c_str());
+        std::exit(1);
+    }
+
+    kseq_t *read1 = kseq_init(fp1);
+
+    hts_tpool *pool = hts_tpool_init(threads);
+    std::ostringstream mode_str;
+    mode_str << "w" << compress_level;
+    BGZF* bgzfp1 = bgzf_open(ofilename1.c_str(), mode_str.str().c_str());
+    bgzf_thread_pool(bgzfp1, pool, 0);
+
+    int64_t base_count = 0;
+
+    int ret1, ret2;
+    while ((ret1 = kseq_read(read1)) >= 0)
+    {
+        base_count += read1->seq.l;
+        if (base_count <= bases) {
+            ret2 = BgzfWriteKseq(bgzfp1, read1);
+            if (ret2 < 0) {
+                std::cerr << "Error! Failed to write read: "
+                    << read1->name.s << std::endl;
+                std::exit(1);
+            }
+        } else {
+            break;
+        }
+    }
+
+    if (ret1 < -1)
+    {
+        std::cerr << "Error! Input fastq truncated! Last read name was "
+            << read1->name.s << std::endl;
+        std::exit(1);
+    }
+
+    kseq_destroy(read1);
+    bgzf_close(bgzfp1);
+    hts_tpool_destroy(pool);
+    gzclose(fp1);
+}
+
+
+void FastxHeadBasesPair(
     const std::string &ifilename1, const std::string &ifilename2,
     const std::string &ofilename1, const std::string &ofilename2,
     int64_t bases, int threads, int compress_level)
@@ -105,7 +152,7 @@ void FastxHeadBases(
 }
 
 
-void FastxHeadReads(
+void FastxHeadReadsSingle(
     const std::string &ifilename, const std::string &ofilename,
     int64_t reads, int threads, int compress_level)
 {
@@ -250,10 +297,10 @@ int FastxHeadMain(int argc, char **argv)
                 }
                 break;
             case 'l':
-                compress_level = boost::lexical_cast<int>(optarg);
+                compress_level = atoi(optarg);
                 break;
             case 't':
-                num_threads = boost::lexical_cast<int>(optarg);
+                num_threads = atoi(optarg);
                 break;
             case 'h':
                 Usage();
@@ -267,9 +314,28 @@ int FastxHeadMain(int argc, char **argv)
         }
     }
 
+    if (input1.empty()) {
+        std::cerr << "Error! Must set at least one input fasta/fastq file "
+            << "using -i(--in1)." << std::endl;
+        std::exit(1);
+    }
+
+    if (output1.empty()) {
+        std::cerr << "Error! Must set at least one output fasta/fastq file "
+            << "using -o(--out1)." << std::endl;
+        std::exit(1);
+    }
+
+    if (!input2.empty() && output2.empty()) {
+        std::cerr << "Error! Must set at the second output fasta/fastq file "
+            << "using -O(--out2) When inputting 2 fasta/fastq files."
+            << std::endl;
+        std::exit(1);
+    }
+
     if (bases < 0 && reads < 0)
     {
-        std::cerr << "Error! must input bases(-b, --bases) "
+        std::cerr << "Error! Must input bases(-b, --bases) "
             << "or number(-n, --number)." << std::endl;
         std::exit(1);
     }
@@ -281,15 +347,34 @@ int FastxHeadMain(int argc, char **argv)
         std::exit(1);
     }
 
-    if (bases > 0)
-    {
-        FastxHeadBases(input1, input2, output1, output2, bases,
-            num_threads, compress_level);
+    if (num_threads < 1) {
+        std::cerr << "Error! Number of threads -t(--threads) must greater"
+            << " than 0" << std::endl;
+        std::exit(1);
+    }
+
+    if (input2.empty()) {
+        // single read
+        if (bases > 0)
+        {
+            FastxHeadBasesSingle(
+                input1, output1, bases, num_threads, compress_level);
+        } else {
+            FastxHeadReadsSingle(
+                input1, output1, reads, num_threads, compress_level);
+        }
     } else {
-        std::thread th(FastxHeadReads,
-            input1, output1, reads, num_threads, compress_level);
-        FastxHeadReads(input2, output2, reads, num_threads, compress_level);
-        th.join();
+        // paired reads
+        if (bases > 0)
+        {
+            FastxHeadBasesPair(input1, input2, output1, output2, bases,
+                num_threads, compress_level);
+        } else {
+            FastxHeadReadsSingle(
+                input1, output1, reads, num_threads, compress_level);
+            FastxHeadReadsSingle(
+                input2, output2, reads, num_threads, compress_level);
+        }
     }
 
     return 0;

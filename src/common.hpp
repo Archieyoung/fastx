@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 #include "zlib.h"
-#include "htslib/kseq.h"
+#include "kseq.h"
 #include "htslib/bgzf.h"
 
 KSEQ_INIT(gzFile, gzread)

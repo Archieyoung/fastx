@@ -19,20 +19,15 @@ endif (NOT EXISTS ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
 
 # CXX configure
 if (CMAKE_BUILD_TYPE STREQUAL Debug)
-    message(STATUS "[STATUS]: Build Release")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -Wall -Wextra -pedantic -fprofile-arcs -ftest-coverage")
+    message(STATUS "[STATUS]: Build Debug")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++17 -g -Wall -Wextra -pedantic -fprofile-arcs -ftest-coverage")
 elseif (CMAKE_BUILD_TYPE STREQUAL Release)
     message(STATUS "[STATUS]: Build Release")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -Wall -Wextra -pedantic")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++17 -O3 -Wall -Wextra -pedantic")
 endif ()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
-
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
-
-find_package(Boost 1.74 REQUIRED COMPONENTS filesystem)
-include_directories(${Boost_INCLUDE_DIRS})
 
 set(MAKE_JOBS 4 CACHE STRING "number of jobs for run make in this cmake list")
 
@@ -91,17 +86,20 @@ else (EXISTS ${HTSLIB_LIB})
     execute_process(COMMAND cp ${HTSLIB_LIB}.3 ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
 endif (EXISTS ${HTSLIB_LIB})
 
+set(ZLIB_COMPAT ON)
+add_subdirectory(vendor/zlib-ng)
 
 add_executable(fastx
     src/common.cpp
     src/fastx_head.cpp
     src/fastx_sample.cpp
+    src/fastx_split.cpp
     src/fastx.cpp)
 
 target_include_directories(fastx PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/htslib
-    $<BUILD_INTERFACE:${Boost_INCLUDE_DIRS})
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/htslib
+    )
 
 target_link_libraries(fastx
     ${HTSLIB_LIB}
-    z m bz2 lzma pthread curl ${Boost_LIBRARIES})
+    zlibstatic m bz2 lzma pthread curl)
