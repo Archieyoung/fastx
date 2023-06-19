@@ -1,9 +1,8 @@
 #include <thread>
 #include <iostream>
 #include <sstream>
+#include <cmath>
 #include "common.hpp"
-#include "boost/lexical_cast.hpp"
-
 
 void FastxCount(const std::string &filename, int64_t &reads, int64_t &bases)
 {
@@ -90,29 +89,30 @@ int64_t BasesStrToInt(const std::string &bases_str) {
         std::exit(1);
     }
 
+    char *tmp;
     int64_t bases = 0;
     switch (bases_str.back()) {
         case 'G':
         case 'g':
             bases = static_cast<int64_t>(std::round(1000000000 *
-                boost::lexical_cast<double>(
-                bases_str.substr(0, bases_str.size() - 1))));
+                strtod(
+                bases_str.substr(0, bases_str.size() - 1).c_str(), &tmp)));
             break;
         case 'M':
         case 'm':
             bases = static_cast<int64_t>(std::round(1000000 *
-                boost::lexical_cast<double>(
-                bases_str.substr(0, bases_str.size() - 1))));
+                strtod(
+                bases_str.substr(0, bases_str.size() - 1).c_str(), &tmp)));
             break;
         case 'K':
         case 'k':
             bases = static_cast<int64_t>(std::round(1000 *
-                boost::lexical_cast<double>(
-                bases_str.substr(0, bases_str.size() - 1))));
+                strtod(
+                bases_str.substr(0, bases_str.size() - 1).c_str(), &tmp)));
             break;
         default:
-            bases = boost::lexical_cast<int64_t>(
-                bases_str.substr(0, bases_str.size()));
+            bases = strtol(
+                bases_str.substr(0, bases_str.size()).c_str(), &tmp, 10);
             break;
     }
 

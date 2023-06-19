@@ -93,7 +93,6 @@ add_executable(fastx
     src/common.cpp
     src/fastx_head.cpp
     src/fastx_sample.cpp
-    src/fastx_split.cpp
     src/fastx.cpp)
 
 target_include_directories(fastx PUBLIC
@@ -101,5 +100,17 @@ target_include_directories(fastx PUBLIC
     )
 
 target_link_libraries(fastx
+    ${HTSLIB_LIB}
+    zlibstatic m bz2 lzma pthread curl)
+
+add_executable(test_reader
+    src/common.cpp
+    src/test_seq_reader.cpp)
+
+target_include_directories(test_reader PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/htslib
+    )
+
+target_link_libraries(test_reader
     ${HTSLIB_LIB}
     zlibstatic m bz2 lzma pthread curl)

@@ -203,10 +203,6 @@ void FastxSamplePair(
         }
     }
 
-
-    reader1.join();
-    reader2.join();
-
     // if (ret1 < -1)
     // {
     //     std::cerr << "Error! Input fastq1 truncated! Last read name was "
@@ -223,6 +219,7 @@ void FastxSamplePair(
 
     // kseq_destroy(read1);
     // kseq_destroy(read2);
+
     bgzf_close(bgzfp1);
     bgzf_close(bgzfp2);
     hts_tpool_destroy(pool);
