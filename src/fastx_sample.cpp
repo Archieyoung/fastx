@@ -152,9 +152,6 @@ void FastxSamplePair(
         std::exit(1);
     }
 
-    // kseq_t *read1 = kseq_init(fp1);
-    // kseq_t *read2 = kseq_init(fp2);
-
     SeqReader reader1 = SeqReader(fp1);
     SeqReader reader2 = SeqReader(fp2);
 
@@ -173,7 +170,7 @@ void FastxSamplePair(
 
     int64_t subsample_bases = 0;
 
-    int ret1, ret2, ret3;
+    int ret;
     kseq_t *read1 = nullptr;
     kseq_t *read2 = nullptr;
     while ((read1 = reader1.read()) != nullptr &&
@@ -184,14 +181,14 @@ void FastxSamplePair(
         if (p <= fraction && subsample_bases < bases) {
             subsample_bases += read1->seq.l;
             subsample_bases += read2->seq.l;
-            ret3 = BgzfWriteKseq(bgzfp1, read1);
-            if (ret3 < 0) {
+            ret = BgzfWriteKseq(bgzfp1, read1);
+            if (ret < 0) {
                 std::cerr << "Error! Failed to write read1: "
                     << read1->name.s << std::endl;
                 std::exit(1);
             }
-            ret3 = BgzfWriteKseq(bgzfp2, read2);
-            if (ret3 < 0) {
+            ret = BgzfWriteKseq(bgzfp2, read2);
+            if (ret < 0) {
                 std::cerr << "Error! Failed to write read2: "
                     << read2->name.s << std::endl;
                 std::exit(1);
@@ -202,23 +199,6 @@ void FastxSamplePair(
             break;
         }
     }
-
-    // if (ret1 < -1)
-    // {
-    //     std::cerr << "Error! Input fastq1 truncated! Last read name was "
-    //         << read1->name.s << std::endl;
-    //     std::exit(1);
-    // }
-
-    // if (ret2 < -1)
-    // {
-    //     std::cerr << "Error! Input fastq2 truncated! Last read name was "
-    //         << read2->name.s << std::endl;
-    //     std::exit(1);
-    // }
-
-    // kseq_destroy(read1);
-    // kseq_destroy(read2);
 
     bgzf_close(bgzfp1);
     bgzf_close(bgzfp2);

@@ -16,6 +16,7 @@
 #include "zlib.h"
 #include "htslib/thread_pool.h"
 #include "common.hpp"
+#include "seq_reader.hpp"
 #include "version.hpp"
 
 
@@ -91,8 +92,8 @@ void FastxHeadBasesPair(
         std::exit(1);
     }
 
-    kseq_t *read1 = kseq_init(fp1);
-    kseq_t *read2 = kseq_init(fp2);
+    SeqReader reader1 = SeqReader(fp1);
+    SeqReader reader2 = SeqReader(fp2);
 
     hts_tpool *pool = hts_tpool_init(threads);
     std::ostringstream mode_str;
@@ -104,21 +105,23 @@ void FastxHeadBasesPair(
 
     int64_t base_count = 0;
 
-    int ret1, ret2, ret3;
-    while ((ret1 = kseq_read(read1) >= 0) &&
-        (ret2 = kseq_read(read2) >= 0))
+    int ret;
+    kseq_t *read1 = nullptr;
+    kseq_t *read2 = nullptr;
+    while ((read1 = reader1.read()) != nullptr &&
+        (read2 = reader2.read()) != nullptr)
     {
         base_count += read1->seq.l;
         base_count += read2->seq.l;
         if (base_count <= bases) {
-            ret3 = BgzfWriteKseq(bgzfp1, read1);
-            if (ret3 < 0) {
+            ret = BgzfWriteKseq(bgzfp1, read1);
+            if (ret < 0) {
                 std::cerr << "Error! Failed to write read1: "
                     << read1->name.s << std::endl;
                 std::exit(1);
             }
-            ret3 = BgzfWriteKseq(bgzfp2, read2);
-            if (ret3 < 0) {
+            ret = BgzfWriteKseq(bgzfp2, read2);
+            if (ret < 0) {
                 std::cerr << "Error! Failed to write read2: "
                     << read2->name.s << std::endl;
                 std::exit(1);
@@ -127,23 +130,7 @@ void FastxHeadBasesPair(
             break;
         }
     }
-
-    if (ret1 < -1)
-    {
-        std::cerr << "Error! Input fastq1 truncated! Last read name was "
-            << read1->name.s << std::endl;
-        std::exit(1);
-    }
-
-    if (ret2 < -1)
-    {
-        std::cerr << "Error! Input fastq2 truncated! Last read name was "
-            << read2->name.s << std::endl;
-        std::exit(1);
-    }
-
-    kseq_destroy(read1);
-    kseq_destroy(read2);
+    
     bgzf_close(bgzfp1);
     bgzf_close(bgzfp2);
     hts_tpool_destroy(pool);
