@@ -169,6 +169,7 @@ int FastxSubseq(const faidx_t *fai, const std::vector<Interval> &intervals,
         std::cout << new_name << "\n" << seq << std::endl;
         free(seq);        
     }
+    return 0;
 }
 
 
@@ -191,6 +192,8 @@ int main(int argc, char **argv) {
     }
 
     FastxSubseq(fai, intervals, true);
+
+    fai_destroy(fai);
     return 0;
 }
 

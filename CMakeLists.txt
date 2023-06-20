@@ -20,10 +20,10 @@ endif (NOT EXISTS ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
 # CXX configure
 if (CMAKE_BUILD_TYPE STREQUAL Debug)
     message(STATUS "[STATUS]: Build Debug")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++17 -g -Wall -Wextra -pedantic -fprofile-arcs -ftest-coverage")
+    set(CMAKE_CXX_FLAGS "--std=c++17 -g -Wall -Wextra -pedantic")
 elseif (CMAKE_BUILD_TYPE STREQUAL Release)
     message(STATUS "[STATUS]: Build Release")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++17 -O3 -Wall -Wextra -pedantic")
+    set(CMAKE_CXX_FLAGS "--std=c++17 -g -O3 -Wall -Wextra -pedantic -DNDEBUG")
 endif ()
 
 set(CMAKE_CXX_STANDARD 17)
