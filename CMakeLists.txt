@@ -115,3 +115,14 @@ target_include_directories(test_reader PUBLIC
 target_link_libraries(test_reader
     ${HTSLIB_LIB}
     zlibstatic m bz2 lzma pthread curl)
+
+add_executable(test_subseq
+    src/fastx_subseq.cpp)
+
+target_include_directories(test_subseq PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/htslib
+    )
+
+target_link_libraries(test_subseq
+    ${HTSLIB_LIB}
+    zlibstatic m bz2 lzma pthread curl)

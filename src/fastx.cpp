@@ -50,13 +50,13 @@ int main(int argc, char **argv)
     }
 
     if ( strcmp(argv[1], "head") == 0 ) {
-        FastxHeadMain(argc - 1, argv + 1);
+        return FastxHeadMain(argc - 1, argv + 1);
     } else if ( strcmp(argv[1], "sample") == 0 )
     {
-        FastxSampleMain(argc - 1, argv + 1);
+        return FastxSampleMain(argc - 1, argv + 1);
     } else if ( strcmp(argv[1], "split") == 0 )
     {
-        FastxSplitMain(argc - 1, argv + 1);
+        return FastxSplitMain(argc - 1, argv + 1);
     }
 
     return 0;
