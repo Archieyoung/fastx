@@ -93,6 +93,7 @@ add_executable(fastx
     src/common.cpp
     src/fastx_head.cpp
     src/fastx_sample.cpp
+    src/fastx_split.cpp
     src/fastx.cpp)
 
 target_include_directories(fastx PUBLIC

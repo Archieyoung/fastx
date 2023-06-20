@@ -1,4 +1,3 @@
-#include <boost/lexical_cast.hpp>
 #include <cstdint>
 #include <iostream>
 #include <iomanip>
@@ -11,33 +10,34 @@
 #include <thread>
 #include "common.hpp"
 #include "htslib/bgzf.h"
+#include "seq_reader.hpp"
 #include "version.hpp"
 #include "htslib/thread_pool.h"
 
-// static
-// int NumberOfDigits(int64_t number)
-// {
-//     int n = 1;
-//     int ir = static_cast<double>(number) / 10.0;
-//     while (ir >= 1) {
-//         ir = ir / 10.0;
-//         ++n;
-//     }
-//     return n;
-// }
 
-void FastxSplitReads(const std::string &ifilename, int64_t reads,
-    int max_chunks, const std::string &prefix, const std::string &suffix,
-    int threads, int compress_level)
+void FastxSplitReads(const std::string &ifilename, int64_t n_read_per_chunk,
+    int64_t n_base_per_chunk, const std::string &prefix,
+    const std::string &suffix, int threads, int compress_level)
 {
-    if (reads <= 0) return;
+    bool split_by_base = false;
+    if (n_read_per_chunk <= 0) {
+        if (n_base_per_chunk > 0) {
+            split_by_base = true;
+        } else {
+            std::cerr << "Error! Must input a least one of "
+                << "bases(-b, --bases) or reads(-r, --reads)"
+                << std::endl;
+            std::exit(1);
+        }
+    }
 
     gzFile fp = gzopen(ifilename.c_str(), "r");
 
     kseq_t *read = kseq_init(fp);
 
-    int ret;
+    int ret1, ret2;
     int64_t read_count = 0;
+    int64_t base_count = 0;
     bool open_new = false;
     int64_t n = 0;
 
@@ -49,28 +49,57 @@ void FastxSplitReads(const std::string &ifilename, int64_t reads,
     BGZF* bgzfp = bgzf_open(ofilename.str().c_str(), mode_str.str().c_str());
     bgzf_thread_pool(bgzfp, pool, 0);
 
-    while ((ret = kseq_read(read)) >= 0)
+    while ((ret1 = kseq_read(read)) >= 0)
     {
         if (!open_new) {
-            ++read_count;
-            BgzfWriteKseq(bgzfp, read);
-            if (read_count >= reads)
-            {
-                open_new = true;
+            ret2 = BgzfWriteKseq(bgzfp, read);
+            if (ret2 < 0) {
+                std::cerr << "Error! Failed to write read: "
+                    << read->name.s << " to " << ofilename.str() << std::endl;
+                std::exit(1);
+            }
+            if (split_by_base) {
+                base_count += read->seq.l;
+                if (base_count >= n_base_per_chunk) open_new = true;
+            } else {
+                ++read_count;
+                if (read_count >= n_read_per_chunk) open_new = true;
             }
         } else {
             ++n;
-            if (n > max_chunks) break;
             ofilename.str("");   // clear
             bgzf_close(bgzfp);
             ofilename << prefix << "." << n << "." << suffix;
             bgzfp = bgzf_open(ofilename.str().c_str(), mode_str.str().c_str());
             bgzf_thread_pool(bgzfp, pool, 0);
-            read_count = 0;
-            ++read_count;
-            BgzfWriteKseq(bgzfp, read);
-            open_new = false;
+
+            ret2 = BgzfWriteKseq(bgzfp, read);
+            if (ret2 < 0) {
+                std::cerr << "Error! Failed to write read: "
+                    << read->name.s << " to " << ofilename.str() << std::endl;
+                std::exit(1);
+            }
+
+            if (split_by_base) {
+                base_count = 0;
+                base_count += read->seq.l;
+                if (base_count < n_base_per_chunk) open_new = false;
+            } else {
+                read_count = 0;
+                ++read_count;
+                if (read_count < n_read_per_chunk) open_new = false;
+            }
         }
+    }
+
+    if (ret1 == -2) {
+        std::cerr << "Error! Input fastq file quality is truncated "
+            << ifilename << std::endl;
+        std::exit(1);
+    } else if (ret1 == -3) {
+        std::cerr << "Error! Input fastq file stream error!"
+            << ifilename << std::endl;
+        std::exit(1);
     }
 
     bgzf_close(bgzfp);
@@ -79,21 +108,129 @@ void FastxSplitReads(const std::string &ifilename, int64_t reads,
     gzclose(fp);
 }
 
+/**
+ * @brief split paired end fastq/fasta by number of bases
+ * 
+ * @param input1 first input fastq/fasta file path
+ * @param input2 second input fastq/fasta file path
+ * @param n_base_per_chunk number of bases per chunk
+ * @param prefix output prefix
+ * @param suffix output suffix
+ * @param threads number of threads
+ * @param compress_level compress level
+ */
+void FastxSplitReadsByBasesPair(
+    const std::string &input1, const std::string &input2,
+    int64_t n_base_per_chunk, const std::string &prefix,
+    const std::string &suffix, int threads, int compress_level)
+{
+    gzFile fp1 = gzopen(input1.c_str(), "r");
+    gzFile fp2 = gzopen(input2.c_str(), "r");
+
+    SeqReader reader1 = SeqReader(fp1);
+    SeqReader reader2 = SeqReader(fp2);
+
+    int64_t base_count = 0;
+    bool open_new = false;
+    int64_t n = 0;
+
+    std::ostringstream ofilename1;
+    ofilename1 << prefix << "." << n << ".R1." << suffix;
+    std::ostringstream ofilename2;
+    ofilename2 << prefix << "." << n << ".R2." << suffix;
+
+    hts_tpool *pool = hts_tpool_init(threads);
+    std::ostringstream mode_str;
+    mode_str << "w" << compress_level;
+    BGZF* bgzfp1 = bgzf_open(ofilename1.str().c_str(), mode_str.str().c_str());
+    BGZF* bgzfp2 = bgzf_open(ofilename2.str().c_str(), mode_str.str().c_str());
+
+    bgzf_thread_pool(bgzfp1, pool, 0);
+    bgzf_thread_pool(bgzfp2, pool, 0);
+
+    int ret;
+    kseq_t *read1 = nullptr;
+    kseq_t *read2 = nullptr;
+    while ((read1 = reader1.read()) != nullptr &&
+        (read2 = reader2.read()) != nullptr)
+    {
+        if (!open_new) {
+            ret = BgzfWriteKseq(bgzfp1, read1);
+            if (ret < 0) {
+                std::cerr << "Error! Failed to write read1: "
+                    << read1->name.s << " to " << ofilename1.str() << std::endl;
+                std::exit(1);
+            }
+            ret = BgzfWriteKseq(bgzfp2, read2);
+            if (ret < 0) {
+                std::cerr << "Error! Failed to write read2: "
+                    << read2->name.s << " to " << ofilename2.str() << std::endl;
+                std::exit(1);
+            }
+            base_count += read1->seq.l;
+            base_count += read2->seq.l;
+            if (base_count >= n_base_per_chunk) {
+                open_new = true;
+            }
+        } else {
+            ++n;
+            ofilename1.str("");   // clear
+            ofilename2.str("");   // clear
+            bgzf_close(bgzfp1);
+            bgzf_close(bgzfp2);
+            ofilename1 << prefix << "." << n << ".R1." << suffix;
+            ofilename2 << prefix << "." << n << ".R2." << suffix;
+            bgzfp1 = bgzf_open(ofilename1.str().c_str(),
+                mode_str.str().c_str());
+            bgzfp2 = bgzf_open(ofilename2.str().c_str(),
+                mode_str.str().c_str());
+            bgzf_thread_pool(bgzfp1, pool, 0);
+            bgzf_thread_pool(bgzfp2, pool, 0);
+
+            ret = BgzfWriteKseq(bgzfp1, read1);
+            if (ret < 0) {
+                std::cerr << "Error! Failed to write read1: "
+                    << read1->name.s << " to " << ofilename1.str() << std::endl;
+                std::exit(1);
+            }
+            ret = BgzfWriteKseq(bgzfp2, read2);
+            if (ret < 0) {
+                std::cerr << "Error! Failed to write read2: "
+                    << read2->name.s << " to " << ofilename2.str() << std::endl;
+                std::exit(1);
+            }
+            
+            base_count = 0;
+            base_count += read1->seq.l;
+            base_count += read2->seq.l;
+            if (base_count < n_base_per_chunk) {
+                open_new = false;
+            }
+        }
+    }
+
+
+    bgzf_close(bgzfp1);
+    bgzf_close(bgzfp2);
+    hts_tpool_destroy(pool);
+    gzclose(fp1);
+    gzclose(fp2);
+}
+
+
 static
 void Usage() {
     std::cerr << "fastx split " << FASTX_VERSION << std::endl;
     std::cerr << std::endl;
-    std::cerr << "  split fasta/q file.\n"
+    std::cerr << "  split fasta/fastq files.\n"
               << std::endl;
     std::cerr
             << "Options:\n"
             << "  -i, --in1, FILE             input fasta/fastq file name for read1.\n"
             << "  -I, --in2, FILE             input fasta/fastq file name for read2(optional).\n"
-            << "  -o, --out1, FILE            output fasta/fastq file name for read1.\n"
-            << "  -O, --out2, FILE            output fasta/fastq file name for read2(with -I).\n"
+            << "  -p, --prefix, FILE          output fasta/fastq file name prefix.\n"
             << "  -b, --bases, STR            put this value of bases per output file(K/M/G).\n"
-            << "  -r, --reads, STR            put this value of reads per output file(K/M/G).\n"
-            << "  -n, --number, int           generate this value of output files"
+            << "  -n, --reads, STR            put this value of reads per output file(K/M/G).\n"
             << "  -l, --level, INT            compression level(0 to 9, or 11).[6]\n"
             << "  -t, --thread, INT           number of threads.[4]\n"
             << "  -h, --help                  print this message and exit.\n"
@@ -115,8 +252,7 @@ int FastxSplitMain(int argc, char **argv)
             {"in2", required_argument, 0, 'I'},
             {"prefix", required_argument, 0, 'p'},
             {"bases", required_argument, 0, 'b'},
-            {"reads", required_argument, 0, 'r'},
-            {"number", required_argument, 0, 'n'},
+            {"reads", required_argument, 0, 'n'},
             {"level", required_argument, 0, 'l'},
             {"thread", required_argument, 0, 't'},
             {"help", no_argument, 0, 'h'},
@@ -124,14 +260,13 @@ int FastxSplitMain(int argc, char **argv)
     };
 
     int c, long_idx;
-    const char *opt_str = "i:I:p:b:r:n:l:t:hV";
+    const char *opt_str = "i:I:p:b:n:l:t:hV";
 
     std::string input1 = "";
     std::string input2 = "";
     std::string prefix = "";
     int64_t bases = -1;
     int64_t reads = -1;
-    int number = -1;
     int compress_level = 6;
     int num_threads = 4;
 
@@ -157,7 +292,7 @@ int FastxSplitMain(int argc, char **argv)
                     std::exit(1);
                 }
                 break;
-            case 'r':
+            case 'n':
                 reads = BasesStrToInt(optarg);
                 if (reads <= 0)
                 {
@@ -166,20 +301,11 @@ int FastxSplitMain(int argc, char **argv)
                     std::exit(1);
                 }
                 break;
-            case 'n':
-                number = boost::lexical_cast<int>(optarg);
-                if (number <= 0)
-                {
-                    std::cerr << "Error! input number must be positive!"
-                        << std::endl;
-                    std::exit(1);
-                }
-                break;
             case 'l':
-                compress_level = boost::lexical_cast<int>(optarg);
+                compress_level = SafeStrtol(optarg, 10);
                 break;
             case 't':
-                num_threads = boost::lexical_cast<int>(optarg);
+                num_threads = SafeStrtol(optarg, 10);
                 break;
             case 'h':
                 Usage();
@@ -193,23 +319,76 @@ int FastxSplitMain(int argc, char **argv)
         }
     }
 
-    if (input1.empty())
-    {
-        std::cerr << "Error! must input the first fasta/q file." << std::endl;
+    if (input1.empty()) {
+        std::cerr << "Error! Must set at least one input fasta/fastq file "
+            << "using -i(--in1)." << std::endl;
         std::exit(1);
     }
 
-    if (bases < 0 && reads < 0 && number < 0)
-    {
-        std::cerr << "Error! must input bases(-b, --bases) or "
-            << "reads(-r, --reads) or number(-n, --number)"
+    if (prefix.empty()) {
+        std::cerr << "Error! Must set the output prefix using -p(--prefix). "
             << std::endl;
         std::exit(1);
     }
 
-    FastxSplitReads(input1, reads, number, prefix, "R1.fastq.gz", num_threads, compress_level);
-    FastxSplitReads(input2, reads, number, prefix, "R2.fastq.gz", num_threads, compress_level);
+    if (bases <= 0 && reads <= 0)
+    {
+        std::cerr << "Error! Must input a least one of "
+            << "bases(-b, --bases) or reads(-r, --reads)"
+            << std::endl;
+        std::exit(1);
+    }
+
+    if (bases > 0 && reads > 0) {
+        std::cerr << "Error! bases(-b, --bases) is conflict with "
+            << "reads(-r, --reads)." << std::endl;
+        std::exit(1);
+    }
+
+    if (num_threads < 1) {
+        std::cerr << "Error! Number of threads -t(--threads) must greater"
+            << " than 0" << std::endl;
+        std::exit(1);
+    }
+    
+    if (input2.empty()) {
+        // single end reads
+        bool input1_is_fq = IsFastq(input1.c_str());
+        std::string input1_suffix = "fastq.gz";
+        if (!input1_is_fq) {
+            input1_suffix = "fasta.gz";
+        }
+        FastxSplitReads(input1, reads, bases, prefix, input1_suffix,
+            num_threads, compress_level);
+    } else {
+        // paired end reads
+        bool input1_is_fq = IsFastq(input1.c_str());
+        std::string input1_suffix = "fastq.gz";
+        if (!input1_is_fq) {
+            input1_suffix = "fasta.gz";
+        }
+        bool input2_is_fq = IsFastq(input2.c_str());
+        std::string input2_suffix = "fastq.gz";
+        if (!input2_is_fq) {
+            input2_suffix = "fasta.gz";
+        }
+
+        if (input1_is_fq != input2_is_fq) {
+            std::cerr << "Error! fastx do not support mixed input of fasta and "
+                << "fastq for input1 and input2." << std::endl;
+            std::exit(1);
+        }
+
+        if (reads > 0) {
+            FastxSplitReads(input1, reads, bases, prefix, "R1."+input1_suffix,
+                num_threads, compress_level);
+            FastxSplitReads(input2, reads, bases, prefix, "R2."+input2_suffix,
+                num_threads, compress_level);
+        } else {
+            FastxSplitReadsByBasesPair(input1, input2, bases, prefix,
+                input1_suffix, num_threads, compress_level);
+        }
+    }
+
     return 0;
 }
-
-

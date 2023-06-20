@@ -1,3 +1,6 @@
+#include <climits>
+#include <cstdio>
+#include <cstdlib>
 #include <thread>
 #include <iostream>
 #include <sstream>
@@ -146,4 +149,74 @@ int BgzfWriteKseq(BGZF *fp, const kseq_t *seq) {
     }
     ret = bgzf_write(fp, "\n", 1);
     return ret;
+}
+
+
+long SafeStrtol(const char *str, int base)
+{
+    char *tmp;
+    long res = strtol(str, &tmp, base);
+    if (res == 0 && tmp == str) {
+        std::cerr << "[SafeStrtol] Error! Can not convert " << str
+            << " into long with base " << base << std::endl;
+        std::exit(1);
+    }
+
+    if (res == LONG_MAX || res == LONG_MIN) {
+        std::cerr << "[SafeStrtol] Error! Input value out of range! str: "
+            << str << " base: " << base << ". ";
+        perror("");
+        std::exit(1);
+    }
+
+    return res;
+}
+
+
+double SafeStrtod(const char *str)
+{
+    char *tmp;
+    double res = strtod(str, &tmp);
+    if (res == 0.0 && tmp == str) {
+        std::cerr << "[SafeStrtod] Error! Can not convert " << str
+            << " into double" << std::endl;
+        std::exit(1);
+    }
+
+    if (res == HUGE_VAL || res == -HUGE_VAL) {
+        std::cerr << "[SafeStrtol] Error! Input value out of range! str: "
+            << str << ". ";
+        perror("");
+        std::exit(1);
+    }
+
+    return res;
+}
+
+
+bool IsFastq(const char *path)
+{
+    gzFile fp = gzopen(path, "r");
+    kseq_t *read = kseq_init(fp);
+
+    int ret = kseq_read(read);
+    if (ret >= 0) {
+        if (read->qual.l) {
+            kseq_destroy(read);
+            gzclose(fp);
+            return true;
+        }
+    } else if (ret == -2) {
+        std::cerr << "Error! Input fastq file quality is truncated "
+            << path << std::endl;
+        std::exit(1);
+    } else if (ret == -3) {
+        std::cerr << "Error! Input fastq file stream error!"
+            << path << std::endl;
+        std::exit(1);
+    }
+
+    kseq_destroy(read);
+    gzclose(fp);
+    return false;
 }

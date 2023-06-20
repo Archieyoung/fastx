@@ -24,4 +24,34 @@ int64_t BasesStrToInt(const std::string &bases_str);
 
 int BgzfWriteKseq(BGZF *fp, const kseq_t *seq);
 
+/**
+ * @brief safe wrapper of strtol.
+ * 
+ * @param str C-string beginning with the representation of an integral number.
+ * @param base Numerical base (radix) that determines the valid characters and their interpretation.
+ * @return long 
+ */
+long SafeStrtol(const char *str, int base);
+
+
+/**
+ * @brief safe wrapper of strtod.
+ * 
+ * @param str C-string beginning with the representation of a floating-point number.
+ * @return double 
+ */
+double SafeStrtod(const char *str);
+
+
+/**
+ * @brief detect if the input file is a fasta/fastq
+ * 
+ * @param path input file path
+ * @return true if the input file is a fastq
+ * @return false if the input file is a fastq
+ */
+bool IsFastq(const char *path);
+
+
+
 #endif  // FASTX_COMMON_HPP

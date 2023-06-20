@@ -294,8 +294,7 @@ int FastxSampleMain(int argc, char **argv)
                 }
                 break;
             case 'f':
-                char *ptr;
-                fraction = std::strtod(optarg, &ptr);
+                fraction = SafeStrtod(optarg);
                 if (fraction <= 0)
                 {
                     std::cerr << "Error! input fraction must be positive!"
@@ -304,13 +303,13 @@ int FastxSampleMain(int argc, char **argv)
                 }
                 break;
             case 'l':
-                compress_level = atoi(optarg);
+                compress_level = SafeStrtol(optarg, 10);
                 break;
             case 's':
-                seed = atoi(optarg);
+                seed = SafeStrtol(optarg, 10);
                 break;
             case 't':
-                num_threads = atoi(optarg);
+                num_threads = SafeStrtol(optarg, 10);
                 break;
             case 'h':
                 Usage();

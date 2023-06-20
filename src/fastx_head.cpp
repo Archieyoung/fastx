@@ -130,7 +130,7 @@ void FastxHeadBasesPair(
             break;
         }
     }
-    
+
     bgzf_close(bgzfp1);
     bgzf_close(bgzfp2);
     hts_tpool_destroy(pool);
@@ -284,10 +284,10 @@ int FastxHeadMain(int argc, char **argv)
                 }
                 break;
             case 'l':
-                compress_level = atoi(optarg);
+                compress_level = SafeStrtol(optarg, 10);
                 break;
             case 't':
-                num_threads = atoi(optarg);
+                num_threads = SafeStrtol(optarg, 10);
                 break;
             case 'h':
                 Usage();

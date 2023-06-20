@@ -146,12 +146,13 @@ public:
                 empty_queue_.pop();
                 int r = Fill(kseq_array);
                 filled_queue_.push(kseq_array);
-                consumer_cv_.notify_one();
                 if (r < 0) {
                     // reach end of file
                     stop_ = true;
+                    consumer_cv_.notify_one();
                     break;
                 }
+                consumer_cv_.notify_one();
             }
         });
     }
