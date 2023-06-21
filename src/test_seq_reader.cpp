@@ -1,4 +1,5 @@
-#include "common.hpp"
+#include "utils.hpp"
+#include "kseq_utils.hpp"
 #include "htslib/bgzf.h"
 #include "seq_reader.hpp"
 #include "zlib.h"
@@ -19,6 +20,12 @@ int main(int argc, char **argv) {
 
     BGZF* bgzfp = bgzf_open(argv[2], "w6");
     hts_tpool *pool = hts_tpool_init(atoi(argv[3]));
+    if (pool == NULL) {
+        std::cerr << "Error! hts_tpool_init can not init thread pool "
+            << std::endl;
+        std::exit(1);
+    }
+
     bgzf_thread_pool(bgzfp, pool, 0);
 
     // int N = 0;

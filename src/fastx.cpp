@@ -2,6 +2,7 @@
 #include <cstring>
 #include <iostream>
 #include <map>
+#include "fastx_subseq.hpp"
 #include "getopt.h"
 
 #include "version.hpp"
@@ -22,6 +23,7 @@ void Usage() {
             << "  head           head sequences\n"
             << "  sample         subsample sequences\n"
             << "  split          split fasta/fastq files.\n"
+            << "  subseq         extract subsequences of fasta/fastq"
             << std::endl;
 }
 
@@ -35,7 +37,8 @@ int main(int argc, char **argv)
     std::map<std::string, bool> registered_commands = {
         {"head", true},
         {"sample", true},
-        {"split", true}
+        {"split", true},
+        {"subseq", true}
         };
     
     if (registered_commands.find(argv[1]) != registered_commands.end())
@@ -57,6 +60,9 @@ int main(int argc, char **argv)
     } else if ( strcmp(argv[1], "split") == 0 )
     {
         return FastxSplitMain(argc - 1, argv + 1);
+    } else if ( strcmp(argv[1], "subseq") == 0 )
+    {
+        return FastxSubseqMain(argc - 1, argv + 1);
     }
 
     return 0;

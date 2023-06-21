@@ -15,7 +15,8 @@
 #include <getopt.h>
 #include "zlib.h"
 #include "htslib/thread_pool.h"
-#include "common.hpp"
+#include "utils.hpp"
+#include "kseq_utils.hpp"
 #include "seq_reader.hpp"
 #include "version.hpp"
 
@@ -35,9 +36,21 @@ void FastxHeadBasesSingle(
     kseq_t *read1 = kseq_init(fp1);
 
     hts_tpool *pool = hts_tpool_init(threads);
+    if (pool == NULL) {
+        std::cerr << "Error! hts_tpool_init can not init thread pool "
+            << std::endl;
+        std::exit(1);
+    }
+    
     std::ostringstream mode_str;
     mode_str << "w" << compress_level;
     BGZF* bgzfp1 = bgzf_open(ofilename1.c_str(), mode_str.str().c_str());
+    if (bgzfp1 == NULL) {
+        std::cerr << "Error! Can not open "
+            << ofilename1 << " for writing" << std::endl;
+        std::exit(1);
+    }
+
     bgzf_thread_pool(bgzfp1, pool, 0);
 
     int64_t base_count = 0;
@@ -96,11 +109,29 @@ void FastxHeadBasesPair(
     SeqReader reader2 = SeqReader(fp2);
 
     hts_tpool *pool = hts_tpool_init(threads);
+    if (pool == NULL) {
+        std::cerr << "Error! hts_tpool_init can not init thread pool "
+            << std::endl;
+        std::exit(1);
+    }
+
     std::ostringstream mode_str;
     mode_str << "w" << compress_level;
     BGZF* bgzfp1 = bgzf_open(ofilename1.c_str(), mode_str.str().c_str());
+    if (bgzfp1 == NULL) {
+        std::cerr << "Error! Can not open "
+            << ofilename1 << " for writing" << std::endl;
+        std::exit(1);
+    }
+
     bgzf_thread_pool(bgzfp1, pool, 0);
     BGZF* bgzfp2 = bgzf_open(ofilename2.c_str(), mode_str.str().c_str());
+    if (bgzfp2 == NULL) {
+        std::cerr << "Error! Can not open "
+            << ofilename2 << " for writing" << std::endl;
+        std::exit(1);
+    }
+
     bgzf_thread_pool(bgzfp2, pool, 0);
 
     int64_t base_count = 0;
@@ -154,9 +185,21 @@ void FastxHeadReadsSingle(
     kseq_t *read = kseq_init(fp);
 
     hts_tpool *pool = hts_tpool_init(threads);
+    if (pool == NULL) {
+        std::cerr << "Error! hts_tpool_init can not init thread pool "
+            << std::endl;
+        std::exit(1);
+    }
+
     std::ostringstream mode_str;
     mode_str << "w" << compress_level;
     BGZF* bgzfp = bgzf_open(ofilename.c_str(), mode_str.str().c_str());
+    if (bgzfp == NULL) {
+        std::cerr << "Error! Can not open "
+            << ofilename << " for writing" << std::endl;
+        std::exit(1);
+    }
+
     bgzf_thread_pool(bgzfp, pool, 0);
 
     int64_t read_count = 0;
@@ -266,7 +309,7 @@ int FastxHeadMain(int argc, char **argv)
                 output2 = optarg;
                 break;
             case 'b':
-                bases = BasesStrToInt(optarg);
+                bases = KmgStrToInt(optarg);
                 if (bases <= 0)
                 {
                     std::cerr << "Error! input bases must be positive!"
@@ -275,7 +318,7 @@ int FastxHeadMain(int argc, char **argv)
                 }
                 break;
             case 'n':
-                reads = BasesStrToInt(optarg);
+                reads = KmgStrToInt(optarg);
                 if (reads <= 0)
                 {
                     std::cerr << "Error! input reads must be positive!"
@@ -331,6 +374,12 @@ int FastxHeadMain(int argc, char **argv)
     {
         std::cerr << "Error! -b(--bases) and -n(--number) can not be "
             "used together!" << std::endl;
+        std::exit(1);
+    }
+
+    if (compress_level < 0) {
+        std::cerr << "Error! Compression level must be greater than or equal to"
+            << " 0" << std::endl;
         std::exit(1);
     }
 

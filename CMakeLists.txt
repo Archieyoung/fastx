@@ -90,10 +90,12 @@ set(ZLIB_COMPAT ON)
 add_subdirectory(vendor/zlib-ng)
 
 add_executable(fastx
-    src/common.cpp
+    src/utils.cpp
+    src/kseq_utils.cpp
     src/fastx_head.cpp
     src/fastx_sample.cpp
     src/fastx_split.cpp
+    src/fastx_subseq.cpp
     src/fastx.cpp)
 
 target_include_directories(fastx PUBLIC
@@ -105,7 +107,8 @@ target_link_libraries(fastx
     zlibstatic m bz2 lzma pthread curl)
 
 add_executable(test_reader
-    src/common.cpp
+    src/utils.cpp
+    src/kseq_utils.cpp
     src/test_seq_reader.cpp)
 
 target_include_directories(test_reader PUBLIC
@@ -113,16 +116,5 @@ target_include_directories(test_reader PUBLIC
     )
 
 target_link_libraries(test_reader
-    ${HTSLIB_LIB}
-    zlibstatic m bz2 lzma pthread curl)
-
-add_executable(test_subseq
-    src/fastx_subseq.cpp)
-
-target_include_directories(test_subseq PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/htslib
-    )
-
-target_link_libraries(test_subseq
     ${HTSLIB_LIB}
     zlibstatic m bz2 lzma pthread curl)

@@ -8,7 +8,8 @@
 #include <zlib.h>
 #include <getopt.h>
 #include <thread>
-#include "common.hpp"
+#include "utils.hpp"
+#include "kseq_utils.hpp"
 #include "htslib/bgzf.h"
 #include "seq_reader.hpp"
 #include "version.hpp"
@@ -44,9 +45,20 @@ void FastxSplitReads(const std::string &ifilename, int64_t n_read_per_chunk,
     std::ostringstream ofilename;
     ofilename << prefix << "." << n << "." << suffix;
     hts_tpool *pool = hts_tpool_init(threads);
+    if (pool == NULL) {
+        std::cerr << "Error! hts_tpool_init can not init thread pool "
+            << std::endl;
+        std::exit(1);
+    }
+
     std::ostringstream mode_str;
     mode_str << "w" << compress_level;
     BGZF* bgzfp = bgzf_open(ofilename.str().c_str(), mode_str.str().c_str());
+    if (bgzfp == NULL) {
+        std::cerr << "Error! Can not open " << ofilename.str()
+            << " for writing" << std::endl;
+        std::exit(1);
+    }
     bgzf_thread_pool(bgzfp, pool, 0);
 
     while ((ret1 = kseq_read(read)) >= 0)
@@ -71,6 +83,12 @@ void FastxSplitReads(const std::string &ifilename, int64_t n_read_per_chunk,
             bgzf_close(bgzfp);
             ofilename << prefix << "." << n << "." << suffix;
             bgzfp = bgzf_open(ofilename.str().c_str(), mode_str.str().c_str());
+            if (bgzfp == NULL) {
+                std::cerr << "Error! Can not open "
+                    << ofilename.str() << " for writing" << std::endl;
+                std::exit(1);
+            }
+
             bgzf_thread_pool(bgzfp, pool, 0);
 
             ret2 = BgzfWriteKseq(bgzfp, read);
@@ -140,10 +158,28 @@ void FastxSplitReadsByBasesPair(
     ofilename2 << prefix << "." << n << ".R2." << suffix;
 
     hts_tpool *pool = hts_tpool_init(threads);
+    if (pool == NULL) {
+        std::cerr << "Error! hts_tpool_init can not init thread pool "
+            << std::endl;
+        std::exit(1);
+    }
+
     std::ostringstream mode_str;
     mode_str << "w" << compress_level;
     BGZF* bgzfp1 = bgzf_open(ofilename1.str().c_str(), mode_str.str().c_str());
+    if (bgzfp1 == NULL) {
+        std::cerr << "Error! Can not open "
+            << ofilename1.str() << " for writing" << std::endl;
+        std::exit(1);
+    }
+
     BGZF* bgzfp2 = bgzf_open(ofilename2.str().c_str(), mode_str.str().c_str());
+    if (bgzfp2 == NULL) {
+        std::cerr << "Error! Can not open "
+            << ofilename2.str() << " for writing" << std::endl;
+        std::exit(1);
+    }
+
 
     bgzf_thread_pool(bgzfp1, pool, 0);
     bgzf_thread_pool(bgzfp2, pool, 0);
@@ -180,10 +216,23 @@ void FastxSplitReadsByBasesPair(
             bgzf_close(bgzfp2);
             ofilename1 << prefix << "." << n << ".R1." << suffix;
             ofilename2 << prefix << "." << n << ".R2." << suffix;
+            
             bgzfp1 = bgzf_open(ofilename1.str().c_str(),
                 mode_str.str().c_str());
+            if (bgzfp1 == NULL) {
+                std::cerr << "Error! Can not open "
+                    << ofilename1.str() << " for writing" << std::endl;
+                std::exit(1);
+            }
+
             bgzfp2 = bgzf_open(ofilename2.str().c_str(),
                 mode_str.str().c_str());
+            if (bgzfp2 == NULL) {
+                std::cerr << "Error! Can not open "
+                    << ofilename2.str() << " for writing" << std::endl;
+                std::exit(1);
+            }
+            
             bgzf_thread_pool(bgzfp1, pool, 0);
             bgzf_thread_pool(bgzfp2, pool, 0);
 
@@ -284,7 +333,7 @@ int FastxSplitMain(int argc, char **argv)
                 prefix = optarg;
                 break;
             case 'b':
-                bases = BasesStrToInt(optarg);
+                bases = KmgStrToInt(optarg);
                 if (bases <= 0)
                 {
                     std::cerr << "Error! input bases must be positive!"
@@ -293,7 +342,7 @@ int FastxSplitMain(int argc, char **argv)
                 }
                 break;
             case 'n':
-                reads = BasesStrToInt(optarg);
+                reads = KmgStrToInt(optarg);
                 if (reads <= 0)
                 {
                     std::cerr << "Error! input reads must be positive!"
@@ -342,6 +391,12 @@ int FastxSplitMain(int argc, char **argv)
     if (bases > 0 && reads > 0) {
         std::cerr << "Error! bases(-b, --bases) is conflict with "
             << "reads(-r, --reads)." << std::endl;
+        std::exit(1);
+    }
+
+    if (compress_level < 0) {
+        std::cerr << "Error! Compression level must be greater than or equal to"
+            << " 0" << std::endl;
         std::exit(1);
     }
 

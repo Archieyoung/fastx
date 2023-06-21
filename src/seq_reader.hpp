@@ -16,7 +16,7 @@
 #include <condition_variable>
 #include <zlib.h>
 
-#include "common.hpp"
+#include "kseq_utils.hpp"
 
 
 const int KSEQ_ARRAY_CAPACITY = 1024;
