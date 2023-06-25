@@ -276,8 +276,7 @@ int FastxSubseq(const faidx_t *fai, const std::vector<Interval> &intervals,
             new_name_stream << ">"
                 << interval.name.c_str()
                 << ":" << interval.start + 1
-                << "-" << interval.end + 1
-                << std::endl;
+                << "-" << interval.end + 1;
             new_name = new_name_stream.str();
         } else {
             new_name = FaiGetNameLine(fai, interval.name.c_str());
@@ -287,6 +286,13 @@ int FastxSubseq(const faidx_t *fai, const std::vector<Interval> &intervals,
         if (ret < 0 || ret < (int)new_name.size()) {
             std::cerr << "[FastxSubseq] Error! failed to write fasta name line "
                 << new_name << std::endl;
+            std::exit(1);
+        }
+
+        ret = bgzf_write(outfp, "\n", 1);
+        if (ret < 0) {
+            std::cerr << "[FastxSubseq] Error! failed to write new line"
+                << std::endl;
             std::exit(1);
         }
 
