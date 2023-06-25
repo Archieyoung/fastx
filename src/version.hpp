@@ -1,6 +1,6 @@
 #ifndef FASTX_VERSION_HPP
 #define FASTX_VERSION_HPP
 
-#define FASTX_VERSION "v0.3.1"
+#define FASTX_VERSION "v0.3.2"
 
 #endif  // FASTX_VERSION_HPP
