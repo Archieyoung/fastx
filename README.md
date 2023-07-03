@@ -38,6 +38,6 @@ Commands:
   subseq         extract subsequences of fasta/fastq
 ```
 
-License
+## License
 
 [MIT License](https://github.com/Archieyoung/fastx/blob/master/LICENSE)
