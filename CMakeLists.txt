@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 # project and version
-project(GLAT LANGUAGES CXX C VERSION 0.0.1.0)
+project(fastx LANGUAGES CXX C VERSION 0.3.3)
 
 include_directories(vendor/htslib)
 
@@ -8,6 +8,9 @@ include_directories(vendor/htslib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
+
+configure_file(src/version.hpp.in version.hpp)
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 if (NOT EXISTS ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
     execute_process(COMMAND mkdir -p ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})

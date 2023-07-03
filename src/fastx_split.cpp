@@ -277,7 +277,7 @@ void Usage() {
             << "Options:\n"
             << "  -i, --in1, FILE             input fasta/fastq file name for read1.\n"
             << "  -I, --in2, FILE             input fasta/fastq file name for read2(optional).\n"
-            << "  -p, --prefix, STR          output fasta/fastq file name prefix.\n"
+            << "  -p, --prefix, STR           output fasta/fastq file name prefix.\n"
             << "  -b, --bases, STR            put this value of bases per output file(K/M/G).\n"
             << "  -n, --reads, STR            put this value of reads per output file(K/M/G).\n"
             << "  -l, --level, INT            compression level(0 to 9, or 11).[6]\n"

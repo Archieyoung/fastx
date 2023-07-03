@@ -1,57 +1,43 @@
-# Fastx - An ultrafast toolkit for manipulating Fasta/q file.
+# Fastx
 
-## 作者
+Fastx is an ultrafast toolkit for manipulating FASTA/Q file.
 
-yangqi(Email: yangqi735@berrygenomics.com)
+## Features
 
-## 依赖
+- Ultrafast
+- Seamlessly parsing both FASTA and FASTQ formats
+- Support both single-end and paired-end FASTA/Q files
+- Parsing by number of bases or number of reads(head, sample, split)
 
-- linux
-- gcc 4.8 or later
-- cmake 3.2 or later
-- boost 1.74 or later
-- external libraries
-    - zlib
-    - libbz2
-    - liblzma
-    - libcurl
 
-## 安装
+## Build
 
 ```sh
+git clone --recursive git@github.com:Archieyoung/fastx.git
 cd fastx
 mkdir build && cd build
-cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/path/to/boost ..
-make
-```
-build/bin目录下将生成可执行文件`fastx`。如果出现链接错误，请检查是否正确安装了zlib, libbz2, liblzma, libcurl。
-
-## 使用说明
-
-`fastx sample` fasta/fastq序列抽样。可以抽取给定碱基数目的reads或者给定比例的reads。
-
-示例：
-
-```sh
-# 按照碱基数进行抽样
-fastx sample -i t.R1.fastq.gz \
-    -I t.R2.fastq.gz \
-    -o t.s.R1.fastq.gz \
-    -O t.s.R2.fastq.gz \
-    -b 3G \        # 抽取3Gbp（3000000000bp）的碱基，支持的单位有K(k)/M(m)/G(g), 如果不提供单位，例如-b 3000就是抽取3000bp的碱基
-    -p /path/to/pigz
-
-# 按照比例进行抽样
-fastx sample -i t.R1.fastq.gz \
-    -I t.R2.fastq.gz \
-    -o t.s.R1.fastq.gz \
-    -O t.s.R2.fastq.gz \
-    -f 0.2 \        # 抽取 0.2 * 总碱基数 的碱基
-    -p /path/to/pigz
+cmake .. && make -j
 ```
 
-`-b`和`-f`参数不能同时使用。
+You can find the executable `fastx` in build/bin.
 
-## 问题和不足
+## Usage
 
-- 该项目目前还在开发中，后续将加入更多的功能。
+```
+./fastx 
+fastx v0.3.2
+
+  fasta/fastq tool kit.
+
+Usage: fastx <command> <arguments>
+
+Commands:
+  head           head sequences
+  sample         subsample sequences
+  split          split fasta/fastq files.
+  subseq         extract subsequences of fasta/fastq
+```
+
+License
+
+[MIT License](https://github.com/Archieyoung/fastx/blob/master/LICENSE)
