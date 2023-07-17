@@ -90,6 +90,7 @@ else (EXISTS ${HTSLIB_LIB})
 endif (EXISTS ${HTSLIB_LIB})
 
 set(ZLIB_COMPAT ON)
+set(WITH_GTEST OFF)
 add_subdirectory(vendor/zlib-ng)
 
 add_executable(fastx
